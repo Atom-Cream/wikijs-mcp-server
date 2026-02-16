@@ -1124,7 +1124,6 @@ class WikiJsAPI {
             email
             isActive
             createdAt
-            updatedAt
           }
         }
       }
@@ -1155,7 +1154,6 @@ class WikiJsAPI {
             email
             isActive
             createdAt
-            updatedAt
           }
         }
       }
@@ -1194,7 +1192,6 @@ class WikiJsAPI {
             name
             isSystem
             createdAt
-            updatedAt
           }
         }
       }
