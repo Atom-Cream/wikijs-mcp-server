@@ -511,7 +511,7 @@ class WikiJsAPI {
   constructor(
     baseUrl: string = "http://localhost:3000",
     token: string = "",
-    locale: string = "ru"
+    locale: string = "en"
   ) {
     console.log(
       `[WikiJsAPI] Конструктор вызван. baseUrl: ${baseUrl}, token: ${
@@ -964,7 +964,7 @@ class WikiJsAPI {
       editor: "markdown",
       isPublished: true,
       isPrivate: false,
-      locale: "ru",
+      locale: this.locale,
       path,
       tags: tags,
       title,
@@ -1649,7 +1649,7 @@ class WikiJsAPI {
 // Создаем API-клиент для использования внутри модуля
 const WIKIJS_BASE_URL = process.env.WIKIJS_BASE_URL || "http://localhost:3000";
 const WIKIJS_TOKEN = process.env.WIKIJS_TOKEN || "";
-const WIKIJS_LOCALE = process.env.WIKIJS_LOCALE || "ru";
+const WIKIJS_LOCALE = process.env.WIKIJS_LOCALE || "en";
 
 // Функция для формирования URL страницы
 function generatePageUrl(
