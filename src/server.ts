@@ -3,6 +3,9 @@ import { WikiJsApi } from "./api.js";
 import { wikiJsTools } from "./tools.js";
 import { ServerConfig } from "./types.js";
 import { config as dotenvConfig } from "dotenv";
+import { McpHandlers } from "./mcp/handlers.js";
+import { JsonRpcRouter } from "./mcp/jsonrpc.js";
+import { SSEManager } from "./mcp/sse.js";
 
 // Загрузка переменных окружения из .env файла
 dotenvConfig();
@@ -27,6 +30,49 @@ const server = fastify({ logger: true });
 
 // Создание экземпляра API Wiki.js
 const wikiJsApi = new WikiJsApi(config.wikijs.baseUrl, config.wikijs.token);
+
+// ---- MCP HTTP Protocol Setup ----
+const mcpHandlers = new McpHandlers();
+const sseManager = new SSEManager();
+const jsonRpcRouter = new JsonRpcRouter(mcpHandlers, sseManager);
+
+// CORS support for MCP endpoints
+server.addHook("onRequest", async (request, reply) => {
+  reply.header("Access-Control-Allow-Origin", "*");
+  reply.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (request.method === "OPTIONS") {
+    reply.code(204).send();
+  }
+});
+
+// MCP JSON-RPC 2.0 endpoint
+server.post("/mcp", async (request, reply) => {
+  return jsonRpcRouter.handle(request, reply);
+});
+
+// MCP Server-Sent Events endpoint
+server.get("/mcp/events", async (request, reply) => {
+  sseManager.handleConnection(request, reply);
+  // Don't return — the SSE connection stays open
+  return reply;
+});
+
+// Root endpoint with server info
+server.get("/", async () => {
+  return {
+    status: "ok",
+    message: "Wiki.js MCP Server is running",
+    version: "1.3.0",
+    endpoints: {
+      "/health": "Server health check",
+      "/tools": "List available tools (legacy format)",
+      "/mcp": "MCP JSON-RPC 2.0 endpoint",
+      "/mcp/events": "MCP SSE notifications endpoint",
+    },
+  };
+});
 
 // Маршрут для проверки здоровья сервера
 server.get("/health", async () => {
@@ -302,6 +348,8 @@ const start = async () => {
 
     await server.listen({ port: config.port, host: "0.0.0.0" });
     console.log(`MCP сервер для Wiki.js запущен на порту ${config.port}`);
+    console.log(`MCP JSON-RPC endpoint: http://localhost:${config.port}/mcp`);
+    console.log(`MCP SSE endpoint: http://localhost:${config.port}/mcp/events`);
   } catch (err) {
     server.log.error(err);
     process.exit(1);
