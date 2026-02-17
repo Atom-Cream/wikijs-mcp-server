@@ -1006,15 +1006,50 @@ class WikiJsAPI {
   // Update page
   async updatePage(id: number, content: string, title?: string): Promise<WikiJsPage> {
     console.log(`[WikiJsAPI] updatePage called with id: ${id}, title: ${title ?? "(unchanged)"}`);
+
+    // Fetch current page metadata first — the Wiki.js update mutation requires
+    // all fields to be present, otherwise it saves content silently without
+    // creating a history entry or updating "last edited by".
+    const metaQuery = gql`
+      query GetPageMeta($id: Int!) {
+        pages {
+          single(id: $id) {
+            title
+            description
+            editor
+            locale
+            isPublished
+            tags { tag }
+          }
+        }
+      }
+    `;
+    const metaData: any = await this.client.request(metaQuery, { id });
+    const meta = metaData.pages.single;
+    const tags = (meta.tags || []).map((t: any) => t.tag);
+
     const mutation = gql`
       mutation UpdatePage(
         $id: Int!
         $content: String!
+        $title: String!
+        $description: String!
+        $editor: String!
+        $locale: String!
         $isPublished: Boolean!
-        $title: String
+        $tags: [String]!
       ) {
         pages {
-          update(id: $id, content: $content, isPublished: $isPublished, title: $title) {
+          update(
+            id: $id
+            content: $content
+            title: $title
+            description: $description
+            editor: $editor
+            locale: $locale
+            isPublished: $isPublished
+            tags: $tags
+          ) {
             responseResult {
               succeeded
               slug
@@ -1032,13 +1067,19 @@ class WikiJsAPI {
       }
     `;
 
-    const variables: Record<string, any> = { id, content, isPublished: true };
-    if (title !== undefined) {
-      variables.title = title;
-    }
+    const variables: Record<string, any> = {
+      id,
+      content,
+      title: title ?? meta.title,
+      description: meta.description ?? "",
+      editor: meta.editor || "markdown",
+      locale: meta.locale || "en",
+      isPublished: meta.isPublished ?? true,
+      tags,
+    };
     console.log(
       `[WikiJsAPI] updatePage: sending GraphQL mutation with variables: ${JSON.stringify(
-        variables
+        { ...variables, content: "[omitted]" }
       )}`
     );
     try {
