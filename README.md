@@ -205,41 +205,18 @@ Add to VS Code settings:
 
 ### Claude Code
 
-#### For Admins: Provisioning Per-User API Keys
+#### Configuring Claude Code
 
-Each regular Wiki.js user needs a personal API key scoped to their permissions. The provisioning script automates this: it creates a dedicated group per user (copying permissions from a template group), assigns the user to it, and generates an API key.
+Get the MCP server URL and API token from your admin, then configure Claude Code using one of the two methods below.
 
-**Prerequisites:**
-- A full-access Wiki.js admin API token (Admin → API Access)
-- A template group whose permissions to copy (e.g. `Authors & Editors`)
-- `curl`, `python3`, and `bash` available on the server
-
-**Run the script:**
-
-```bash
-./scripts/provision-mcp-keys.sh <admin-token> "Authors & Editors" [wikijs-url]
-```
-
-- `admin-token` — full-access Wiki.js API token
-- `"Authors & Editors"` — name of the group to copy permissions from
-- `wikijs-url` — Wiki.js base URL (default: `http://localhost:3000`)
-
-Generated keys are saved to `mcp-keys.json` (gitignored). Distribute each user's key to them privately — never commit this file.
-
-The script is idempotent: it skips users who are already provisioned (group exists and key is saved). Re-run it whenever new users are added.
-
----
-
-#### For Users: Configuring Claude Code
-
-Ask your Wiki.js admin for your personal API token, then create an `.mcp.json` file with the following content:
+**Option A — Project-level** (recommended): create `.mcp.json` in your project directory (the folder where you run `claude`):
 
 ```json
 {
   "mcpServers": {
     "wikijs": {
       "type": "http",
-      "url": "http://YOUR_SERVER:3200/mcp",
+      "url": "https://YOUR_MCP_SERVER/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_WIKIJS_API_TOKEN"
       }
@@ -248,15 +225,41 @@ Ask your Wiki.js admin for your personal API token, then create an `.mcp.json` f
 }
 ```
 
-Replace:
-- `YOUR_SERVER` — hostname of the server running this MCP server (e.g. `wiki.example.com`)
-- `YOUR_WIKIJS_API_TOKEN` — your personal token received from the admin (must be on a single line, no line breaks)
+**Option B — Global** (available in all projects): use the CLI:
 
-**Where to place the file:**
+```bash
+claude mcp add --transport http wikijs https://YOUR_MCP_SERVER/mcp \
+  --header "Authorization: Bearer YOUR_WIKIJS_API_TOKEN"
+```
 
-Place `.mcp.json` in your project directory (the folder where you run `claude`). The global `~/.claude/.mcp.json` is not reliably picked up by Claude Code.
+> **Notes:**
+> - `type` must be `"http"` (not `"url"`)
+> - Token must be a single unbroken string — no line breaks or spaces
+> - `~/.claude/.mcp.json` is **not** read by Claude Code — use the CLI command above for global config
 
-Exit Claude Code (`/exit` or `Ctrl+C`) and relaunch it. Verify with `/mcp` — you should see the `wikijs` server listed as connected.
+Relaunch Claude Code and verify with `/mcp` — you should see `wikijs` listed as connected.
+
+#### API Key Attribution Limitation
+
+Wiki.js API keys are always owned by the admin account (created via Administration → API Access). There is no per-user API key creation in the Wiki.js UI. As a result, **all page edits made through the MCP server will appear in page history as edited by the admin user**, regardless of which token was used.
+
+#### For Admins: Provisioning Per-User Permission Groups
+
+Even though edit attribution always falls back to admin, you can still provision per-user API keys scoped to specific permission groups. This limits what each user's token can do (e.g. read-only vs. editor permissions). The script automates group creation and key generation:
+
+```bash
+./scripts/provision-mcp-keys.sh <admin-token> "Authors & Editors" [wikijs-url]
+```
+
+- `admin-token` — full-access Wiki.js API token (Admin → API Access)
+- `"Authors & Editors"` — template group whose permissions to copy
+- `wikijs-url` — Wiki.js base URL (default: `http://localhost:3000`)
+
+Generated keys are saved to `mcp-keys.json` (gitignored). Distribute each user's key privately — never commit this file. The script is idempotent: re-run it whenever new users are added.
+
+#### Wiki.js Cache
+
+After updating pages via MCP, content changes may not immediately appear in the Wiki.js UI. If you see stale content: **Administration → Utilities → Flush Cache**.
 
 ## 🛠 Development
 
