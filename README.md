@@ -203,6 +203,28 @@ Add to VS Code settings:
 }
 ```
 
+### Claude Code
+
+Add to your user-level MCP config (`~/.claude/.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "wikijs": {
+      "type": "url",
+      "url": "http://YOUR_SERVER:3200/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_WIKIJS_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Replace `YOUR_SERVER` with your Wiki.js MCP server host and `YOUR_WIKIJS_API_TOKEN` with your Wiki.js API token.
+
+After saving, restart Claude Code. The Wiki.js tools will be available automatically across all projects.
+
 ## 🛠 Development
 
 ### Project Structure

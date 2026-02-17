@@ -88,7 +88,7 @@ server.post("/mcp", async (request, reply) => {
     return reply;
   }
   const userApi = createUserApi(token);
-  return jsonRpcRouter.handle(request, reply, userApi);
+  await jsonRpcRouter.handle(request, reply, userApi);
 });
 
 // MCP Server-Sent Events endpoint (requires per-user auth)
