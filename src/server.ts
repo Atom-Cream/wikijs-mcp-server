@@ -1,6 +1,6 @@
-import fastify from "fastify";
+import fastify, { FastifyRequest } from "fastify";
 import { WikiJsApi } from "./api.js";
-import { wikiJsTools } from "./tools.js";
+import { wikiJsTools, WikiJsAPI } from "./tools.js";
 import { ServerConfig } from "./types.js";
 import { config as dotenvConfig } from "dotenv";
 import { McpHandlers } from "./mcp/handlers.js";
@@ -31,6 +31,35 @@ const server = fastify({ logger: true });
 // Create Wiki.js API instance
 const wikiJsApi = new WikiJsApi(config.wikijs.baseUrl, config.wikijs.token);
 
+// Wiki.js locale from env
+const WIKIJS_LOCALE = process.env.WIKIJS_LOCALE || "en";
+
+/**
+ * Extract Bearer token from request.
+ * Checks Authorization header first, then ?token= query parameter as fallback
+ * (workaround for Claude Code header bug — see GitHub issues #14977, #7290).
+ */
+function extractToken(request: FastifyRequest): string | null {
+  // 1. Authorization: Bearer <token>
+  const authHeader = request.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  // 2. Query parameter fallback: ?token=<token>
+  const query = request.query as Record<string, string>;
+  if (query?.token) {
+    return query.token;
+  }
+  return null;
+}
+
+/**
+ * Create a per-request WikiJsAPI instance from the caller's token.
+ */
+function createUserApi(token: string): WikiJsAPI {
+  return new WikiJsAPI(config.wikijs.baseUrl, token, WIKIJS_LOCALE);
+}
+
 // ---- MCP HTTP Protocol Setup ----
 const mcpHandlers = new McpHandlers();
 const sseManager = new SSEManager();
@@ -47,15 +76,33 @@ server.addHook("onRequest", async (request, reply) => {
   }
 });
 
-// MCP JSON-RPC 2.0 endpoint
+// MCP JSON-RPC 2.0 endpoint (requires per-user auth)
 server.post("/mcp", async (request, reply) => {
-  return jsonRpcRouter.handle(request, reply);
+  const token = extractToken(request);
+  if (!token) {
+    reply.code(401).send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32001, message: "Unauthorized: provide Authorization Bearer token or ?token= query parameter" },
+    });
+    return reply;
+  }
+  const userApi = createUserApi(token);
+  return jsonRpcRouter.handle(request, reply, userApi);
 });
 
-// MCP Server-Sent Events endpoint
+// MCP Server-Sent Events endpoint (requires per-user auth)
 server.get("/mcp/events", async (request, reply) => {
+  const token = extractToken(request);
+  if (!token) {
+    reply.code(401).send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32001, message: "Unauthorized: provide Authorization Bearer token or ?token= query parameter" },
+    });
+    return reply;
+  }
   sseManager.handleConnection(request, reply);
-  // Don't return — the SSE connection stays open
   return reply;
 });
 
