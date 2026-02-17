@@ -205,20 +205,34 @@ Add to VS Code settings:
 
 ### Claude Code
 
-#### Step 1: Generate your personal Wiki.js API token
+#### For Admins: Provisioning Per-User API Keys
 
-1. Log into Wiki.js web UI
-2. Click your avatar (top-right) → **Profile**
-3. Go to the **API Keys** section
-4. Click **Create API Key**
-5. Set a name (e.g. "Claude Code") and expiration date
-6. Click **Create** and copy the generated token
+Each regular Wiki.js user needs a personal API key scoped to their permissions. The provisioning script automates this: it creates a dedicated group per user (copying permissions from a template group), assigns the user to it, and generates an API key.
 
-> **Important:** Each user should generate their own token. This ensures that all page edits made through Claude Code are attributed to your Wiki.js account.
+**Prerequisites:**
+- A full-access Wiki.js admin API token (Admin → API Access)
+- A template group whose permissions to copy (e.g. `Authors & Editors`)
+- `curl`, `python3`, and `bash` available on the server
 
-#### Step 2: Configure Claude Code
+**Run the script:**
 
-Add to your user-level MCP config (`~/.claude/.mcp.json`):
+```bash
+./scripts/provision-mcp-keys.sh <admin-token> "Authors & Editors" [wikijs-url]
+```
+
+- `admin-token` — full-access Wiki.js API token
+- `"Authors & Editors"` — name of the group to copy permissions from
+- `wikijs-url` — Wiki.js base URL (default: `http://localhost:3000`)
+
+Generated keys are saved to `mcp-keys.json` (gitignored). Distribute each user's key to them privately — never commit this file.
+
+The script is idempotent: it skips users who are already provisioned (group exists and key is saved). Re-run it whenever new users are added.
+
+---
+
+#### For Users: Configuring Claude Code
+
+Ask your Wiki.js admin for your personal API token, then add it to your user-level MCP config (`~/.claude/.mcp.json`):
 
 ```json
 {
@@ -235,16 +249,12 @@ Add to your user-level MCP config (`~/.claude/.mcp.json`):
 ```
 
 Replace:
-- `YOUR_SERVER` — Wiki.js MCP server host (e.g. `wiki.example.com` or `localhost`)
-- `YOUR_WIKIJS_API_TOKEN` — your personal token from Step 1
+- `YOUR_SERVER` — hostname of the server running this MCP server (e.g. `wiki.example.com`)
+- `YOUR_WIKIJS_API_TOKEN` — your personal token received from the admin
 
-#### Step 3: Restart Claude Code
+Exit Claude Code (`/exit` or `Ctrl+C`) and relaunch it. The Wiki.js tools will be available automatically across all projects.
 
-Exit Claude Code (`/exit` or `Ctrl+C`) and launch it again. The Wiki.js tools will be available automatically across all projects.
-
-#### Verification
-
-After restarting, ask Claude Code to list your Wiki.js pages. If configured correctly, you should see results from `list_pages` tool.
+**Verification:** Ask Claude Code to list your Wiki.js pages. If configured correctly, you should see results from the `list_pages` tool.
 
 ## 🛠 Development
 
