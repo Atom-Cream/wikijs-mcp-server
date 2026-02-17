@@ -70,7 +70,7 @@ fi
 echo "  Found template group '${TEMPLATE_GROUP}' (id: ${TEMPLATE_ID})"
 
 echo "[2/5] Fetching template group permissions..."
-TEMPLATE_DETAIL=$(gql "{ groups { single(id: ${TEMPLATE_ID}) { permissions pageRules { id deny match roles path locales } } } }")
+TEMPLATE_DETAIL=$(gql "{ groups { single(id: ${TEMPLATE_ID}) { redirectOnLogin permissions pageRules { id deny match roles path locales } } } }")
 PERMISSIONS=$(echo "$TEMPLATE_DETAIL" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -81,8 +81,13 @@ import sys, json
 data = json.load(sys.stdin)
 g = data['data']['groups']['single']
 print(json.dumps(g['pageRules']))")
+REDIRECT_ON_LOGIN=$(echo "$TEMPLATE_DETAIL" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data['data']['groups']['single'].get('redirectOnLogin') or '/')")
 echo "  Permissions: $(echo "$PERMISSIONS" | python3 -c "import sys,json; p=json.load(sys.stdin); print(f'{len(p)} entries')")"
 echo "  Page rules: $(echo "$PAGE_RULES" | python3 -c "import sys,json; p=json.load(sys.stdin); print(f'{len(p)} entries')")"
+echo "  Redirect on login: ${REDIRECT_ON_LOGIN}"
 
 # --- Step 2: Fetch all users ---
 echo "[3/5] Fetching users..."
@@ -111,7 +116,7 @@ SKIPPED=0
 CREATED=0
 
 # Get user list and process
-python3 - "$GROUPS_JSON" "$USERS_JSON" "$PERMISSIONS" "$PAGE_RULES" "$EXISTING_MCP_GROUPS" "$ADMIN_TOKEN" "$WIKIJS_URL" "$EXPIRATION" "$OUTPUT_FILE" "$TEMPLATE_GROUP" <<'PYEOF'
+python3 - "$GROUPS_JSON" "$USERS_JSON" "$PERMISSIONS" "$PAGE_RULES" "$EXISTING_MCP_GROUPS" "$ADMIN_TOKEN" "$WIKIJS_URL" "$EXPIRATION" "$OUTPUT_FILE" "$TEMPLATE_GROUP" "$REDIRECT_ON_LOGIN" <<'PYEOF'
 import sys, json, subprocess, os
 
 groups_json = json.loads(sys.argv[1])
@@ -124,6 +129,7 @@ wikijs_url = sys.argv[7]
 expiration = sys.argv[8]
 output_file = sys.argv[9]
 template_name = sys.argv[10]
+redirect_on_login = sys.argv[11]
 
 # Load existing output
 try:
@@ -217,8 +223,8 @@ for user in users:
             return '{' + ', '.join(parts) + '}'
         return json.dumps(obj)
     rules_str = to_gql_input(page_rules)
-    update_query = 'mutation { groups { update(id: %d, name: "%s", redirectOnLogin: "/", permissions: %s, pageRules: %s) { responseResult { succeeded message } } } }' % (
-        group_id, mcp_group_name, perms_str, rules_str
+    update_query = 'mutation { groups { update(id: %d, name: "%s", redirectOnLogin: "%s", permissions: %s, pageRules: %s) { responseResult { succeeded message } } } }' % (
+        group_id, mcp_group_name, redirect_on_login, perms_str, rules_str
     )
     result = gql(update_query)
     update_resp = result['data']['groups']['update']
