@@ -4,7 +4,7 @@
  * Ported from lib/fixed_mcp_http_server.js
  */
 
-import { wikiJsTools, wikiJsToolsWithImpl } from "../tools.js";
+import { wikiJsTools, wikiJsToolsWithImpl, WikiJsAPI, createToolImplementations } from "../tools.js";
 import {
   safeValidateToolParams,
   safeValidateToolResult,
@@ -18,10 +18,10 @@ import type {
   ToolImplementation,
 } from "./protocol.js";
 
-// Build tools lookup map from implementations
-const toolsMap: Record<string, ToolImplementation> = {};
+// Default tools lookup map (used when no per-request API is provided)
+const defaultToolsMap: Record<string, ToolImplementation> = {};
 for (const tool of wikiJsToolsWithImpl) {
-  toolsMap[tool.function.name] = tool.implementation;
+  defaultToolsMap[tool.function.name] = tool.implementation;
 }
 
 // Tool names for direct-call routing
@@ -78,8 +78,10 @@ export class McpHandlers {
   /**
    * Handle tools/call - execute a tool by name
    * Ported edge cases: search_users q->query, no-params tools bypass
+   * @param params - tool call parameters (name + arguments)
+   * @param api - optional per-request WikiJsAPI instance (for per-user auth)
    */
-  async handleToolCall(params: McpToolCallParams): Promise<McpToolCallResult> {
+  async handleToolCall(params: McpToolCallParams, api?: WikiJsAPI): Promise<McpToolCallResult> {
     const toolName = params.name;
     let args = { ...(params.arguments || {}) };
 
@@ -97,6 +99,12 @@ export class McpHandlers {
       (args as any).query = (args as any).q;
       delete (args as any).q;
     }
+
+    // Build per-request implementations if a custom API instance is provided,
+    // otherwise fall back to the default (server-wide) tools map
+    const toolsMap = api
+      ? createToolImplementations(api)
+      : defaultToolsMap;
 
     // Find implementation
     const implementation = toolsMap[toolName];

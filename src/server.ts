@@ -1,16 +1,16 @@
-import fastify from "fastify";
+import fastify, { FastifyRequest } from "fastify";
 import { WikiJsApi } from "./api.js";
-import { wikiJsTools } from "./tools.js";
+import { wikiJsTools, WikiJsAPI } from "./tools.js";
 import { ServerConfig } from "./types.js";
 import { config as dotenvConfig } from "dotenv";
 import { McpHandlers } from "./mcp/handlers.js";
 import { JsonRpcRouter } from "./mcp/jsonrpc.js";
 import { SSEManager } from "./mcp/sse.js";
 
-// Загрузка переменных окружения из .env файла
+// Load environment variables from .env file
 dotenvConfig();
 
-// Загрузка конфигурации из переменных окружения
+// Load configuration from environment variables
 const config: ServerConfig = {
   port: parseInt(process.env.PORT || "8000"),
   wikijs: {
@@ -19,17 +19,46 @@ const config: ServerConfig = {
   },
 };
 
-// Вывод текущей конфигурации для отладки
-console.log("Конфигурация MCP сервера:");
+// Print current configuration for debugging
+console.log("MCP server configuration:");
 console.log(`PORT: ${config.port}`);
 console.log(`WIKIJS_BASE_URL: ${config.wikijs.baseUrl}`);
 console.log(`WIKIJS_TOKEN: ${config.wikijs.token.substring(0, 10)}...`);
 
-// Создание экземпляра Fastify
+// Create Fastify instance
 const server = fastify({ logger: true });
 
-// Создание экземпляра API Wiki.js
+// Create Wiki.js API instance
 const wikiJsApi = new WikiJsApi(config.wikijs.baseUrl, config.wikijs.token);
+
+// Wiki.js locale from env
+const WIKIJS_LOCALE = process.env.WIKIJS_LOCALE || "en";
+
+/**
+ * Extract Bearer token from request.
+ * Checks Authorization header first, then ?token= query parameter as fallback
+ * (workaround for Claude Code header bug — see GitHub issues #14977, #7290).
+ */
+function extractToken(request: FastifyRequest): string | null {
+  // 1. Authorization: Bearer <token>
+  const authHeader = request.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  // 2. Query parameter fallback: ?token=<token>
+  const query = request.query as Record<string, string>;
+  if (query?.token) {
+    return query.token;
+  }
+  return null;
+}
+
+/**
+ * Create a per-request WikiJsAPI instance from the caller's token.
+ */
+function createUserApi(token: string): WikiJsAPI {
+  return new WikiJsAPI(config.wikijs.baseUrl, token, WIKIJS_LOCALE);
+}
 
 // ---- MCP HTTP Protocol Setup ----
 const mcpHandlers = new McpHandlers();
@@ -47,15 +76,33 @@ server.addHook("onRequest", async (request, reply) => {
   }
 });
 
-// MCP JSON-RPC 2.0 endpoint
+// MCP JSON-RPC 2.0 endpoint (requires per-user auth)
 server.post("/mcp", async (request, reply) => {
-  return jsonRpcRouter.handle(request, reply);
+  const token = extractToken(request);
+  if (!token) {
+    reply.code(401).send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32001, message: "Unauthorized: provide Authorization Bearer token or ?token= query parameter" },
+    });
+    return reply;
+  }
+  const userApi = createUserApi(token);
+  return jsonRpcRouter.handle(request, reply, userApi);
 });
 
-// MCP Server-Sent Events endpoint
+// MCP Server-Sent Events endpoint (requires per-user auth)
 server.get("/mcp/events", async (request, reply) => {
+  const token = extractToken(request);
+  if (!token) {
+    reply.code(401).send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32001, message: "Unauthorized: provide Authorization Bearer token or ?token= query parameter" },
+    });
+    return reply;
+  }
   sseManager.handleConnection(request, reply);
-  // Don't return — the SSE connection stays open
   return reply;
 });
 
@@ -74,7 +121,7 @@ server.get("/", async () => {
   };
 });
 
-// Маршрут для проверки здоровья сервера
+// Health check endpoint
 server.get("/health", async () => {
   try {
     const isConnected = await wikiJsApi.checkConnection();
@@ -93,13 +140,13 @@ server.get("/health", async () => {
   }
 });
 
-// Маршрут для получения списка доступных инструментов
+// Endpoint to list available tools
 server.get("/tools", async () => {
   return wikiJsTools;
 });
 
-// Маршруты для каждого инструмента
-// Получение страницы по ID
+// Tool endpoints
+// Get page by ID
 server.get("/get_page", async (request) => {
   const { id } = request.query as { id: string };
   try {
@@ -110,7 +157,7 @@ server.get("/get_page", async (request) => {
   }
 });
 
-// Получение контента страницы
+// Get page content
 server.get("/get_page_content", async (request) => {
   const { id } = request.query as { id: string };
   try {
@@ -121,7 +168,7 @@ server.get("/get_page_content", async (request) => {
   }
 });
 
-// Получение списка страниц
+// List pages
 server.get("/list_pages", async (request) => {
   const { limit, orderBy } = request.query as {
     limit?: string;
@@ -138,7 +185,7 @@ server.get("/list_pages", async (request) => {
   }
 });
 
-// Поиск страниц
+// Search pages
 server.get("/search_pages", async (request) => {
   const { query, limit } = request.query as { query: string; limit?: string };
   try {
@@ -152,7 +199,7 @@ server.get("/search_pages", async (request) => {
   }
 });
 
-// Создание страницы
+// Create page
 server.post("/create_page", async (request) => {
   const { title, content, path, description } = request.body as {
     title: string;
@@ -168,7 +215,7 @@ server.post("/create_page", async (request) => {
   }
 });
 
-// Обновление страницы
+// Update page
 server.post("/update_page", async (request) => {
   const { id, content } = request.body as { id: number; content: string };
   try {
@@ -179,7 +226,7 @@ server.post("/update_page", async (request) => {
   }
 });
 
-// Удаление страницы
+// Delete page
 server.post("/delete_page", async (request) => {
   const { id } = request.body as { id: number };
   try {
@@ -190,7 +237,7 @@ server.post("/delete_page", async (request) => {
   }
 });
 
-// Получение списка пользователей
+// List users
 server.get("/list_users", async () => {
   try {
     return await wikiJsApi.getUsersList();
@@ -200,7 +247,7 @@ server.get("/list_users", async () => {
   }
 });
 
-// Поиск пользователей
+// Search users
 server.get("/search_users", async (request) => {
   const { query } = request.query as { query: string };
   try {
@@ -211,7 +258,7 @@ server.get("/search_users", async (request) => {
   }
 });
 
-// Получение списка групп
+// List groups
 server.get("/list_groups", async () => {
   try {
     return await wikiJsApi.getGroupsList();
@@ -221,7 +268,7 @@ server.get("/list_groups", async () => {
   }
 });
 
-// Создание пользователя
+// Create user
 server.post("/create_user", async (request) => {
   const {
     email,
@@ -256,7 +303,7 @@ server.post("/create_user", async (request) => {
   }
 });
 
-// Обновление пользователя
+// Update user
 server.post("/update_user", async (request) => {
   const { id, name } = request.body as { id: number; name: string };
   try {
@@ -267,7 +314,7 @@ server.post("/update_user", async (request) => {
   }
 });
 
-// Получение всех страниц включая неопубликованные
+// List all pages including unpublished
 server.get("/list_all_pages", async (request) => {
   const { limit, orderBy, includeUnpublished } = request.query as {
     limit?: string;
@@ -286,7 +333,7 @@ server.get("/list_all_pages", async (request) => {
   }
 });
 
-// Поиск неопубликованных страниц
+// Search unpublished pages
 server.get("/search_unpublished_pages", async (request) => {
   const { query, limit } = request.query as { query: string; limit?: string };
   try {
@@ -300,7 +347,7 @@ server.get("/search_unpublished_pages", async (request) => {
   }
 });
 
-// Принудительное удаление страницы
+// Force delete page
 server.post("/force_delete_page", async (request) => {
   const { id } = request.body as { id: number };
   try {
@@ -311,7 +358,7 @@ server.post("/force_delete_page", async (request) => {
   }
 });
 
-// Получение статуса публикации страницы
+// Get page publication status
 server.get("/get_page_status", async (request) => {
   const { id } = request.query as { id: string };
   try {
@@ -322,7 +369,7 @@ server.get("/get_page_status", async (request) => {
   }
 });
 
-// Публикация страницы
+// Publish page
 server.post("/publish_page", async (request) => {
   const { id } = request.body as { id: number };
   try {
@@ -333,21 +380,19 @@ server.post("/publish_page", async (request) => {
   }
 });
 
-// Запуск сервера
+// Start the server
 const start = async () => {
   try {
-    // Проверка соединения с Wiki.js перед запуском сервера
+    // Check Wiki.js connection before starting the server
     const isConnected = await wikiJsApi.checkConnection();
     if (!isConnected) {
       console.warn(
-        "⚠️ Не удалось подключиться к Wiki.js API. Сервер запущен, но функциональность будет ограничена."
+        "Warning: Failed to connect to Wiki.js API. Server is running but functionality will be limited."
       );
-      // Не выходим из процесса, а продолжаем работу
-      // process.exit(1);
     }
 
     await server.listen({ port: config.port, host: "0.0.0.0" });
-    console.log(`MCP сервер для Wiki.js запущен на порту ${config.port}`);
+    console.log(`Wiki.js MCP server started on port ${config.port}`);
     console.log(`MCP JSON-RPC endpoint: http://localhost:${config.port}/mcp`);
     console.log(`MCP SSE endpoint: http://localhost:${config.port}/mcp/events`);
   } catch (err) {
