@@ -254,8 +254,7 @@ Replace:
 
 **Where to place the file:**
 
-- **Global (all projects):** `~/.claude/.mcp.json` — tools available everywhere
-- **Project-level:** `.mcp.json` in your project directory — tools available only in that project
+Place `.mcp.json` in your project directory (the folder where you run `claude`). The global `~/.claude/.mcp.json` is not reliably picked up by Claude Code.
 
 Exit Claude Code (`/exit` or `Ctrl+C`) and relaunch it. Verify with `/mcp` — you should see the `wikijs` server listed as connected.
 
