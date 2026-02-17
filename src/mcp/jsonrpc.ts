@@ -12,6 +12,7 @@ import {
 } from "./protocol.js";
 import { McpHandlers } from "./handlers.js";
 import { SSEManager } from "./sse.js";
+import { WikiJsAPI } from "../tools.js";
 
 export class JsonRpcRouter {
   private handlers: McpHandlers;
@@ -24,10 +25,12 @@ export class JsonRpcRouter {
 
   /**
    * Handle incoming POST /mcp request
+   * @param api - optional per-request WikiJsAPI instance (for per-user auth)
    */
   async handle(
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
+    api?: WikiJsAPI
   ): Promise<JsonRpcResponse> {
     let parsedBody: JsonRpcRequest;
 
@@ -57,7 +60,7 @@ export class JsonRpcRouter {
     }
 
     try {
-      const result = await this.route(parsedBody.method, parsedBody.params);
+      const result = await this.route(parsedBody.method, parsedBody.params, api);
       return this.successResponse(reply, result, parsedBody.id ?? null);
     } catch (error: any) {
       const code = error.code || JSON_RPC_ERRORS.INTERNAL_ERROR;
@@ -88,7 +91,7 @@ export class JsonRpcRouter {
    *   workspace/tools, workspace/executeCommand, tools/execute,
    *   and direct tool calls by name
    */
-  private async route(method: string, params?: Record<string, any>): Promise<any> {
+  private async route(method: string, params?: Record<string, any>, api?: WikiJsAPI): Promise<any> {
     switch (method) {
       case "initialize":
         return this.handlers.handleInitialize(params as any);
@@ -101,7 +104,7 @@ export class JsonRpcRouter {
         const result = await this.handlers.handleToolCall({
           name: params?.name,
           arguments: params?.arguments || {},
-        });
+        }, api);
         this.sse.broadcast("tool_executed", {
           tool: params?.name,
           status: "success",
@@ -117,7 +120,7 @@ export class JsonRpcRouter {
         const result = await this.handlers.handleToolCall({
           name: toolName,
           arguments: toolArgs,
-        });
+        }, api);
         this.sse.broadcast("command_executed", {
           tool: toolName,
           status: "success",
@@ -134,7 +137,7 @@ export class JsonRpcRouter {
           const result = await this.handlers.handleToolCall({
             name: method,
             arguments: params || {},
-          });
+          }, api);
           this.sse.broadcast("tool_executed", {
             tool: method,
             status: "success",
