@@ -243,6 +243,10 @@ export const wikiJsTools: WikiJsToolDefinition[] = [
             type: "string",
             description: "New page content (Markdown format)",
           },
+          title: {
+            type: "string",
+            description: "New page title (optional, only updated if provided)",
+          },
         },
         required: ["id", "content"],
       },
@@ -1000,16 +1004,17 @@ class WikiJsAPI {
   }
 
   // Update page
-  async updatePage(id: number, content: string): Promise<WikiJsPage> {
-    console.log(`[WikiJsAPI] updatePage called with id: ${id}`);
+  async updatePage(id: number, content: string, title?: string): Promise<WikiJsPage> {
+    console.log(`[WikiJsAPI] updatePage called with id: ${id}, title: ${title ?? "(unchanged)"}`);
     const mutation = gql`
       mutation UpdatePage(
         $id: Int!
         $content: String!
         $isPublished: Boolean!
+        $title: String
       ) {
         pages {
-          update(id: $id, content: $content, isPublished: $isPublished) {
+          update(id: $id, content: $content, isPublished: $isPublished, title: $title) {
             responseResult {
               succeeded
               slug
@@ -1027,7 +1032,10 @@ class WikiJsAPI {
       }
     `;
 
-    const variables = { id, content, isPublished: true };
+    const variables: Record<string, any> = { id, content, isPublished: true };
+    if (title !== undefined) {
+      variables.title = title;
+    }
     console.log(
       `[WikiJsAPI] updatePage: sending GraphQL mutation with variables: ${JSON.stringify(
         variables
@@ -1684,7 +1692,7 @@ export function createToolImplementations(api: WikiJsAPI): Record<string, (param
     },
     update_page: async (params: any) => {
       console.log(`[Implementations] update_page called with params: ${JSON.stringify(params)}`);
-      return await api.updatePage(params.id, params.content);
+      return await api.updatePage(params.id, params.content, params.title);
     },
     delete_page: async (params: any) => {
       console.log(`[Implementations] delete_page called with params: ${JSON.stringify(params)}`);
@@ -1882,6 +1890,10 @@ export const wikiJsToolsWithImpl = [
           content: {
             type: "string",
             description: "New page content (Markdown format)",
+          },
+          title: {
+            type: "string",
+            description: "New page title (optional, only updated if provided)",
           },
         },
         required: ["id", "content"],
