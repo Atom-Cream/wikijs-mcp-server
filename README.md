@@ -205,6 +205,19 @@ Add to VS Code settings:
 
 ### Claude Code
 
+#### Step 1: Generate your personal Wiki.js API token
+
+1. Log into Wiki.js web UI
+2. Click your avatar (top-right) → **Profile**
+3. Go to the **API Keys** section
+4. Click **Create API Key**
+5. Set a name (e.g. "Claude Code") and expiration date
+6. Click **Create** and copy the generated token
+
+> **Important:** Each user should generate their own token. This ensures that all page edits made through Claude Code are attributed to your Wiki.js account.
+
+#### Step 2: Configure Claude Code
+
 Add to your user-level MCP config (`~/.claude/.mcp.json`):
 
 ```json
@@ -221,9 +234,17 @@ Add to your user-level MCP config (`~/.claude/.mcp.json`):
 }
 ```
 
-Replace `YOUR_SERVER` with your Wiki.js MCP server host and `YOUR_WIKIJS_API_TOKEN` with your Wiki.js API token.
+Replace:
+- `YOUR_SERVER` — Wiki.js MCP server host (e.g. `wiki.example.com` or `localhost`)
+- `YOUR_WIKIJS_API_TOKEN` — your personal token from Step 1
 
-After saving, restart Claude Code. The Wiki.js tools will be available automatically across all projects.
+#### Step 3: Restart Claude Code
+
+Exit Claude Code (`/exit` or `Ctrl+C`) and launch it again. The Wiki.js tools will be available automatically across all projects.
+
+#### Verification
+
+After restarting, ask Claude Code to list your Wiki.js pages. If configured correctly, you should see results from `list_pages` tool.
 
 ## 🛠 Development
 
