@@ -232,13 +232,13 @@ The script is idempotent: it skips users who are already provisioned (group exis
 
 #### For Users: Configuring Claude Code
 
-Ask your Wiki.js admin for your personal API token, then add it to your user-level MCP config (`~/.claude/.mcp.json`):
+Ask your Wiki.js admin for your personal API token, then create an `.mcp.json` file with the following content:
 
 ```json
 {
   "mcpServers": {
     "wikijs": {
-      "type": "url",
+      "type": "http",
       "url": "http://YOUR_SERVER:3200/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_WIKIJS_API_TOKEN"
@@ -250,11 +250,14 @@ Ask your Wiki.js admin for your personal API token, then add it to your user-lev
 
 Replace:
 - `YOUR_SERVER` — hostname of the server running this MCP server (e.g. `wiki.example.com`)
-- `YOUR_WIKIJS_API_TOKEN` — your personal token received from the admin
+- `YOUR_WIKIJS_API_TOKEN` — your personal token received from the admin (must be on a single line, no line breaks)
 
-Exit Claude Code (`/exit` or `Ctrl+C`) and relaunch it. The Wiki.js tools will be available automatically across all projects.
+**Where to place the file:**
 
-**Verification:** Ask Claude Code to list your Wiki.js pages. If configured correctly, you should see results from the `list_pages` tool.
+- **Global (all projects):** `~/.claude/.mcp.json` — tools available everywhere
+- **Project-level:** `.mcp.json` in your project directory — tools available only in that project
+
+Exit Claude Code (`/exit` or `Ctrl+C`) and relaunch it. Verify with `/mcp` — you should see the `wikijs` server listed as connected.
 
 ## 🛠 Development
 
