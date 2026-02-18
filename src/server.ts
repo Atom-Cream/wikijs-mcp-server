@@ -7,6 +7,10 @@ import { config as dotenvConfig } from "dotenv";
 import { McpHandlers } from "./mcp/handlers.js";
 import { JsonRpcRouter } from "./mcp/jsonrpc.js";
 import { SSEManager } from "./mcp/sse.js";
+import { oauthPlugin } from "./oauth/routes.js";
+import { oauthConfig } from "./oauth/config.js";
+import { isOurJwt, verifyAccessToken } from "./oauth/jwt.js";
+import { getWikiJsKeyForEmail } from "./oauth/store.js";
 
 // Load environment variables from .env file
 dotenvConfig();
@@ -29,6 +33,9 @@ console.log(`WIKIJS_TOKEN: ${config.wikijs.token.substring(0, 10)}...`);
 // Create Fastify instance
 const server = fastify({ logger: true });
 
+// Register OAuth 2.1 routes (well-known metadata + authorization + token endpoints)
+await server.register(oauthPlugin);
+
 // Create Wiki.js API instance
 const wikiJsApi = new WikiJsApi(config.wikijs.baseUrl, config.wikijs.token);
 
@@ -43,17 +50,15 @@ const adminApi = new WikiJsApi(
 const WIKIJS_LOCALE = process.env.WIKIJS_LOCALE || "en";
 
 /**
- * Extract Bearer token from request.
+ * Extract the raw Bearer token string from a request.
  * Checks Authorization header first, then ?token= query parameter as fallback
  * (workaround for Claude Code header bug — see GitHub issues #14977, #7290).
  */
-function extractToken(request: FastifyRequest): string | null {
-  // 1. Authorization: Bearer <token>
+function extractRawToken(request: FastifyRequest): string | null {
   const authHeader = request.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
     return authHeader.slice(7);
   }
-  // 2. Query parameter fallback: ?token=<token>
   const query = request.query as Record<string, string>;
   if (query?.token) {
     return query.token;
@@ -62,10 +67,47 @@ function extractToken(request: FastifyRequest): string | null {
 }
 
 /**
- * Create a per-request WikiJsAPI instance from the caller's token.
+ * Resolve the raw bearer string to a Wiki.js API key.
+ *
+ * Two auth paths:
+ *   A) OAuth JWT  — token was issued by this server's /oauth/token endpoint.
+ *      Validate the JWT, extract the user's email, look up their Wiki.js key.
+ *   B) Legacy     — token is already a raw Wiki.js API key (Claude Code users).
+ *      Pass it through unchanged.
+ *
+ * Returns the Wiki.js API key string on success, null on failure.
+ */
+const jwtSecretBytes = new TextEncoder().encode(oauthConfig.jwtSecret);
+
+async function resolveWikiJsToken(rawToken: string): Promise<string | null> {
+  // Path A: OAuth JWT issued by this server.
+  if (oauthConfig.jwtSecret && isOurJwt(rawToken, oauthConfig.issuer)) {
+    const claims = await verifyAccessToken(rawToken, oauthConfig.issuer, jwtSecretBytes);
+    if (!claims?.email) return null;
+    const wikiKey = getWikiJsKeyForEmail(claims.email, oauthConfig.mcpKeysPath);
+    if (!wikiKey) {
+      console.warn(`[Auth] OAuth user "${claims.email}" has no Wiki.js key in mcp-keys.json`);
+      return null;
+    }
+    return wikiKey;
+  }
+  // Path B: Raw Wiki.js token (existing Claude Code behaviour — untouched).
+  return rawToken;
+}
+
+/**
+ * Create a per-request WikiJsAPI instance from a resolved Wiki.js API key.
  */
 function createUserApi(token: string): WikiJsAPI {
   return new WikiJsAPI(config.wikijs.baseUrl, token, WIKIJS_LOCALE);
+}
+
+/**
+ * WWW-Authenticate header value sent with 401 responses on MCP endpoints.
+ * Points Claude to our OAuth metadata so it can start the auth flow.
+ */
+function wwwAuthenticateHeader(): string {
+  return `Bearer resource_metadata="${oauthConfig.issuer}/.well-known/oauth-protected-resource"`;
 }
 
 // ---- Audit Logging ----
@@ -86,6 +128,13 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 }
 
 async function resolveUserEmail(token: string): Promise<string> {
+  // Fast path for OAuth JWTs: email is directly in the token claims.
+  if (oauthConfig.jwtSecret && isOurJwt(token, oauthConfig.issuer)) {
+    const claims = await verifyAccessToken(token, oauthConfig.issuer, jwtSecretBytes);
+    if (claims?.email) return claims.email;
+  }
+
+  // Legacy path: Wiki.js API key — resolve email via group lookup.
   const payload = decodeJwtPayload(token);
   if (!payload) return "unknown";
   const grpId = payload.grp as number;
@@ -137,8 +186,9 @@ server.addHook("onRequest", async (request, reply) => {
 
 // MCP JSON-RPC 2.0 endpoint (requires per-user auth)
 server.post("/mcp", async (request, reply) => {
-  const token = extractToken(request);
-  if (!token) {
+  const rawToken = extractRawToken(request);
+  if (!rawToken) {
+    reply.header("WWW-Authenticate", wwwAuthenticateHeader());
     reply.code(401).send({
       jsonrpc: "2.0",
       id: null,
@@ -146,25 +196,40 @@ server.post("/mcp", async (request, reply) => {
     });
     return reply;
   }
-  // Audit log tool calls asynchronously (non-blocking)
+
+  const wikiJsToken = await resolveWikiJsToken(rawToken);
+  if (!wikiJsToken) {
+    reply.header("WWW-Authenticate", wwwAuthenticateHeader());
+    reply.code(401).send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32001, message: "Unauthorized: token is invalid or user is not provisioned" },
+    });
+    return reply;
+  }
+
+  // Audit log tool calls asynchronously (non-blocking).
+  // For OAuth users we have the email in the JWT; for legacy tokens we resolve
+  // via the Wiki.js groups API as before.
   const body = request.body as Record<string, unknown>;
   if (body?.method === "tools/call") {
     const params = body.params as Record<string, unknown> | undefined;
     const toolName = params?.name as string | undefined;
     const args = (params?.arguments as Record<string, unknown>) || {};
     if (toolName) {
-      resolveUserEmail(token).then((email) => writeAuditLog(email, toolName, args)).catch(() => {});
+      resolveUserEmail(rawToken).then((email) => writeAuditLog(email, toolName, args)).catch(() => {});
     }
   }
 
-  const userApi = createUserApi(token);
+  const userApi = createUserApi(wikiJsToken);
   await jsonRpcRouter.handle(request, reply, userApi);
 });
 
 // MCP Server-Sent Events endpoint (requires per-user auth)
 server.get("/mcp/events", async (request, reply) => {
-  const token = extractToken(request);
-  if (!token) {
+  const rawToken = extractRawToken(request);
+  if (!rawToken) {
+    reply.header("WWW-Authenticate", wwwAuthenticateHeader());
     reply.code(401).send({
       jsonrpc: "2.0",
       id: null,
@@ -172,6 +237,18 @@ server.get("/mcp/events", async (request, reply) => {
     });
     return reply;
   }
+
+  const wikiJsToken = await resolveWikiJsToken(rawToken);
+  if (!wikiJsToken) {
+    reply.header("WWW-Authenticate", wwwAuthenticateHeader());
+    reply.code(401).send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32001, message: "Unauthorized: token is invalid or user is not provisioned" },
+    });
+    return reply;
+  }
+
   sseManager.handleConnection(request, reply);
   return reply;
 });
