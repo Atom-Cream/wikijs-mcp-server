@@ -239,13 +239,9 @@ claude mcp add --transport http wikijs https://YOUR_MCP_SERVER/mcp \
 
 Relaunch Claude Code and verify with `/mcp` — you should see `wikijs` listed as connected.
 
-#### API Key Attribution Limitation
+#### For Admins: Provisioning Per-User API Keys
 
-Wiki.js API keys are always owned by the admin account (created via Administration → API Access). There is no per-user API key creation in the Wiki.js UI. As a result, **all page edits made through the MCP server will appear in page history as edited by the admin user**, regardless of which token was used.
-
-#### For Admins: Provisioning Per-User Permission Groups
-
-Even though edit attribution always falls back to admin, you can still provision per-user API keys scoped to specific permission groups. This limits what each user's token can do (e.g. read-only vs. editor permissions). The script automates group creation and key generation:
+Each user's personal token is passed through the MCP server directly to Wiki.js, so **edits are attributed to the token owner** in page history — not the admin. This requires each user to have their own token scoped to their own permission group. The provisioning script automates group creation and key generation:
 
 ```bash
 ./scripts/provision-mcp-keys.sh <admin-token> "Authors & Editors" [wikijs-url]
