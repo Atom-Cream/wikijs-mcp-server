@@ -1,4 +1,5 @@
 import fastify, { FastifyRequest } from "fastify";
+import { appendFileSync, mkdirSync } from "fs";
 import { WikiJsApi } from "./api.js";
 import { wikiJsTools, WikiJsAPI } from "./tools.js";
 import { ServerConfig } from "./types.js";
@@ -31,6 +32,13 @@ const server = fastify({ logger: true });
 // Create Wiki.js API instance
 const wikiJsApi = new WikiJsApi(config.wikijs.baseUrl, config.wikijs.token);
 
+// Admin API instance for internal operations (group lookups for audit log).
+// Requires a full-access token; falls back to the regular token if not set.
+const adminApi = new WikiJsApi(
+  config.wikijs.baseUrl,
+  process.env.WIKIJS_ADMIN_TOKEN || config.wikijs.token
+);
+
 // Wiki.js locale from env
 const WIKIJS_LOCALE = process.env.WIKIJS_LOCALE || "en";
 
@@ -60,6 +68,57 @@ function createUserApi(token: string): WikiJsAPI {
   return new WikiJsAPI(config.wikijs.baseUrl, token, WIKIJS_LOCALE);
 }
 
+// ---- Audit Logging ----
+
+const AUDIT_LOG_PATH = process.env.AUDIT_LOG_PATH || "/app/logs/audit.log";
+
+// Cache group ID → user email so we don't query Wiki.js on every request
+const groupEmailCache = new Map<number, string>();
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function resolveUserEmail(token: string): Promise<string> {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return "unknown";
+  const grpId = payload.grp as number;
+  if (groupEmailCache.has(grpId)) return groupEmailCache.get(grpId)!;
+  try {
+    const data = await adminApi.getGroupsList();
+    for (const g of data) {
+      if (Number((g as any).id) === Number(grpId)) {
+        const name: string = (g as any).name;
+        const email = name.startsWith("mcp-") ? name.slice(4) : name;
+        groupEmailCache.set(grpId, email);
+        return email;
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return `grp:${grpId}`;
+}
+
+function writeAuditLog(user: string, tool: string, args: Record<string, unknown>): void {
+  const ts = new Date().toISOString();
+  // Include page ID or path when present for quick scanning
+  const ref = args.id ? `id:${args.id}` : args.path ? `path:${args.path}` : "";
+  const line = `${ts} | ${user.padEnd(36)} | ${tool.padEnd(28)} | ${ref ? ref + " | " : ""}${JSON.stringify(args)}\n`;
+  try {
+    mkdirSync(AUDIT_LOG_PATH.replace(/\/[^/]+$/, ""), { recursive: true });
+    appendFileSync(AUDIT_LOG_PATH, line);
+  } catch {
+    // non-fatal — don't break the request if logging fails
+  }
+}
+
 // ---- MCP HTTP Protocol Setup ----
 const mcpHandlers = new McpHandlers();
 const sseManager = new SSEManager();
@@ -87,6 +146,17 @@ server.post("/mcp", async (request, reply) => {
     });
     return reply;
   }
+  // Audit log tool calls asynchronously (non-blocking)
+  const body = request.body as Record<string, unknown>;
+  if (body?.method === "tools/call") {
+    const params = body.params as Record<string, unknown> | undefined;
+    const toolName = params?.name as string | undefined;
+    const args = (params?.arguments as Record<string, unknown>) || {};
+    if (toolName) {
+      resolveUserEmail(token).then((email) => writeAuditLog(email, toolName, args)).catch(() => {});
+    }
+  }
+
   const userApi = createUserApi(token);
   await jsonRpcRouter.handle(request, reply, userApi);
 });
