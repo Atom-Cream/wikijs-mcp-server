@@ -140,8 +140,21 @@ export class McpHandlers {
       }
     }
 
-    // Execute
-    const result = await implementation(validatedParams);
+    // Execute — catch tool-level errors and return as MCP tool errors
+    // (isError: true) rather than letting them become JSON-RPC protocol errors.
+    // This way a Forbidden / not-found / etc. failure on one tool doesn't make
+    // Claude Desktop think the entire connection is broken.
+    let result: unknown;
+    try {
+      result = await implementation(validatedParams);
+    } catch (toolErr: any) {
+      const errMsg = toolErr?.message || String(toolErr);
+      console.error(`[MCP] Tool ${toolName} threw: ${errMsg}`);
+      return {
+        content: [{ type: "text", text: `Error: ${errMsg}` }],
+        isError: true,
+      };
+    }
 
     // Validate result (warning only, don't block)
     const resultValidation = safeValidateToolResult(toolName, result);
@@ -155,15 +168,17 @@ export class McpHandlers {
 
     console.log(`[MCP] Tool ${toolName} executed successfully`);
 
+    const text = typeof result === "string"
+      ? result
+      : JSON.stringify(result, null, 2);
+    console.log(`[MCP] Tool ${toolName} result preview: ${text.slice(0, 300)}`);
+
     // Format as MCP content
     return {
       content: [
         {
           type: "text",
-          text:
-            typeof result === "string"
-              ? result
-              : JSON.stringify(result, null, 2),
+          text,
         },
       ],
     };
