@@ -138,6 +138,17 @@ export class JsonRpcRouter {
       case "ping":
         return {};
 
+      // Claude Desktop sends these even when capabilities declare them disabled.
+      // Return empty lists rather than Method Not Found errors.
+      case "resources/list":
+        return { resources: [] };
+
+      case "prompts/list":
+        return { prompts: [] };
+
+      case "logging/setLevel":
+        return {};
+
       default:
         // Direct tool call by method name (e.g., method: "get_page")
         if (this.handlers.isDirectToolCall(method)) {
