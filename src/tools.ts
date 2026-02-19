@@ -510,12 +510,14 @@ class WikiJsAPI {
   private client: GraphQLClient;
   private token: string;
   private baseUrl: string;
+  private publicUrl: string;
   private locale: string;
 
   constructor(
     baseUrl: string = "http://localhost:3000",
     token: string = "",
-    locale: string = "en"
+    locale: string = "en",
+    publicUrl?: string
   ) {
     console.log(
       `[WikiJsAPI] Constructor called. baseUrl: ${baseUrl}, token: ${
@@ -525,6 +527,8 @@ class WikiJsAPI {
     this.client = new GraphQLClient(`${baseUrl}/graphql`);
     this.token = token;
     this.baseUrl = baseUrl;
+    // Use explicit publicUrl, fall back to the module-level WIKIJS_PUBLIC_URL constant
+    this.publicUrl = publicUrl || WIKIJS_PUBLIC_URL;
     this.locale = locale;
 
     if (token) {
@@ -533,9 +537,9 @@ class WikiJsAPI {
     }
   }
 
-  // Generate page URL
+  // Generate page URL using the public hostname so links work outside Docker
   private generatePageUrl(path: string): string {
-    return generatePageUrl(this.baseUrl, this.locale, path);
+    return generatePageUrl(this.publicUrl, this.locale, path);
   }
 
   // Get page by ID
@@ -1689,6 +1693,13 @@ class WikiJsAPI {
 const WIKIJS_BASE_URL = process.env.WIKIJS_BASE_URL || "http://localhost:3000";
 const WIKIJS_TOKEN = process.env.WIKIJS_TOKEN || "";
 const WIKIJS_LOCALE = process.env.WIKIJS_LOCALE || "en";
+// Public URL used in page links returned to clients. Falls back to WIKIJS_BASE_URL
+// so existing deployments work without change, but set WIKIJS_PUBLIC_URL to the
+// public hostname (e.g. https://knb.bulksource.com) so Claude Desktop can open links.
+const WIKIJS_PUBLIC_URL =
+  process.env.WIKIJS_PUBLIC_URL ||
+  process.env.WIKIJS_BASE_URL ||
+  "http://localhost:3000";
 
 // Generate page URL
 function generatePageUrl(

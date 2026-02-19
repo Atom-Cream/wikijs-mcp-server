@@ -27,8 +27,17 @@ for (const tool of wikiJsToolsWithImpl) {
 // Tool names for direct-call routing
 const toolNames = wikiJsTools.map((t) => t.function.name);
 
-// Tools that accept no required params (skip validation for empty args)
-const NO_PARAMS_TOOLS = new Set(["list_users", "list_groups"]);
+// Tools that accept no required params (skip validation for empty args).
+// Also covers tools whose schemas are not registered in ToolParamsSchemas.
+const NO_PARAMS_TOOLS = new Set([
+  "list_users",
+  "list_groups",
+  "list_all_pages",        // all params optional
+  "get_page_status",       // id required but schema not in ToolParamsSchemas
+  "publish_page",          // id required but schema not in ToolParamsSchemas
+  "force_delete_page",     // id required but schema not in ToolParamsSchemas
+  "search_unpublished_pages", // query required but schema not in ToolParamsSchemas
+]);
 
 export class McpHandlers {
   /**
