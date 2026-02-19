@@ -59,6 +59,13 @@ export class JsonRpcRouter {
       );
     }
 
+    // JSON-RPC notifications have no `id` — must NOT receive any response per spec
+    if (!("id" in parsedBody)) {
+      console.log(`[JSON-RPC] Notification ${parsedBody.method} — no response sent`);
+      reply.code(200).send({});
+      return {} as JsonRpcResponse;
+    }
+
     try {
       const result = await this.route(parsedBody.method, parsedBody.params, api);
       return this.successResponse(reply, result, parsedBody.id ?? null);
