@@ -141,16 +141,24 @@ curl https://mcp.knb.bulksource.com/.well-known/oauth-authorization-server
 
 ---
 
-## Step 6 — Add the Connector in Claude Desktop (Admin)
+## Step 6 — Add the Connector in Claude Desktop (Org Admin)
 
-1. Open **Claude Desktop → Settings → Connectors**
+The connector must be created at the **organisation** level so it appears for all
+team members automatically.
+
+1. Open **Claude Desktop → Organisation Settings → Connectors** (you need org-admin rights)
 2. Click **"Add Connector"**
 3. Fill in:
    - **Connector URL:** `https://mcp.knb.bulksource.com/mcp`
    - **OAuth Client ID:** the value of `OAUTH_CLIENT_ID` from your `.env`
      (e.g. `wikijs-mcp-client`)
    - **OAuth Client Secret:** the value of `OAUTH_CLIENT_SECRET` from your `.env`
-4. Save — the connector is now visible to all team members
+4. Save — the connector is now visible to every member of the organisation
+
+> **Important:** if you previously added the connector and need to reset it (e.g.
+> after a server rebuild or config change), remove it at the **org level** and
+> re-add it.  Removing it only from Personal Settings does not clear Claude
+> Desktop's cached tool metadata.
 
 ---
 
@@ -159,13 +167,17 @@ curl https://mcp.knb.bulksource.com/.well-known/oauth-authorization-server
 Each user does this once:
 
 1. Open **Claude Desktop → Settings → Connectors**
-2. Find the **Wiki.js** connector added by the admin
+2. Find the **BulkSource Knowledge Base** connector added by the admin
 3. Click **"Connect"**
-4. A browser window opens → sign in with your Google account
+4. A browser window opens → sign in with your Google (act.software) account
 5. Done — Claude Desktop now has access to all Wiki.js tools
 
 Edits made through Claude Desktop are attributed to the correct user in Wiki.js
 page history (same as Claude Code).
+
+> **First-time users:** you must have logged in to the Wiki.js web UI at least
+> once before connecting via Claude Desktop.  The OAuth provisioning step looks
+> you up by email and will fail if your account doesn't exist in Wiki.js yet.
 
 ---
 
@@ -184,8 +196,15 @@ provisioning script manually:
 ### "Identity provider error: access_denied"
 
 The user clicked "Cancel" on the Google consent screen, or their Google account
-is not allowed (if the OAuth consent screen is restricted to Internal/your domain).
-Ask the user to try again and approve the consent screen.
+is not in the allowed domain.  Ask the user to try again and approve the consent
+screen using their `act.software` Google account.
+
+### Tools appear to return errors even though the server is healthy
+
+Disconnect the connector at the **org level** (Organisation Settings → Connectors
+→ Remove), then re-add it.  Claude Desktop caches the tool metadata from the
+first connection; stale cache can cause tools to be reported as failing even
+when the server returns valid data.
 
 ### Token expires and Claude Desktop doesn't reconnect automatically
 

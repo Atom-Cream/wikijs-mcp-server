@@ -203,6 +203,39 @@ Add to VS Code settings:
 }
 ```
 
+### Claude Desktop
+
+Claude Desktop connects via OAuth 2.1 — no token management required.  Any team
+member can connect by signing in with their Google account.
+
+#### For Users
+
+1. Open **Claude Desktop → Settings → Connectors**
+2. Find the **BulkSource Knowledge Base** connector (added by your org admin)
+3. Click **"Connect"** → sign in with your `act.software` Google account
+4. All 17 Wiki.js tools are now available in every Claude Desktop conversation
+
+> You must have logged in to the Wiki.js web UI at least once before connecting.
+
+#### For Org Admins
+
+See [OAUTH_SETUP.md](./OAUTH_SETUP.md) for the full setup guide (Google OAuth app,
+server secrets, docker-compose config, connector registration).
+
+The short version — add the connector at the **organisation** level:
+
+| Field | Value |
+|---|---|
+| Connector URL | `https://mcp.knb.bulksource.com/mcp` |
+| OAuth Client ID | `wikijs-mcp-client` |
+| OAuth Client Secret | *(value of `OAUTH_CLIENT_SECRET` in your `.env`)* |
+
+> **Troubleshooting:** if tools report errors after a server update, remove the
+> connector at the org level and re-add it to clear Claude Desktop's cached tool
+> metadata.
+
+---
+
 ### Claude Code
 
 #### Configuring Claude Code
