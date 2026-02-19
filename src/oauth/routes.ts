@@ -116,6 +116,22 @@ function verifyPkce(codeVerifier: string, codeChallenge: string): boolean {
 export const oauthPlugin: FastifyPluginAsync = async (
   fastify: FastifyInstance
 ) => {
+  // Claude Desktop (and all spec-compliant OAuth clients) POST to /oauth/token
+  // with Content-Type: application/x-www-form-urlencoded per RFC 6749 §4.1.3.
+  // Fastify only parses application/json by default, so we add a parser here.
+  fastify.addContentTypeParser(
+    "application/x-www-form-urlencoded",
+    { parseAs: "string" },
+    (_req, body, done) => {
+      try {
+        const parsed = Object.fromEntries(new URLSearchParams(body as string));
+        done(null, parsed);
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    }
+  );
+
   // ---- RFC 9728: Protected Resource Metadata ----
   // Tells Claude (and any MCP client) which Authorization Server to use.
   fastify.get("/.well-known/oauth-protected-resource", async (_req, reply) => {
