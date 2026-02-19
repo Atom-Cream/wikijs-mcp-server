@@ -225,6 +225,36 @@ server.post("/mcp", async (request, reply) => {
   await jsonRpcRouter.handle(request, reply, userApi);
 });
 
+// MCP SSE stream on the main endpoint — required by the Streamable HTTP
+// transport (MCP spec 2025-03-26) used by Claude Desktop. Clients send
+// GET /mcp to open the event stream after the POST /mcp handshake.
+server.get("/mcp", async (request, reply) => {
+  const rawToken = extractRawToken(request);
+  if (!rawToken) {
+    reply.header("WWW-Authenticate", wwwAuthenticateHeader());
+    reply.code(401).send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32001, message: "Unauthorized: provide Authorization Bearer token or ?token= query parameter" },
+    });
+    return reply;
+  }
+
+  const wikiJsToken = await resolveWikiJsToken(rawToken);
+  if (!wikiJsToken) {
+    reply.header("WWW-Authenticate", wwwAuthenticateHeader());
+    reply.code(401).send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32001, message: "Unauthorized: token is invalid or user is not provisioned" },
+    });
+    return reply;
+  }
+
+  sseManager.handleConnection(request, reply);
+  return reply;
+});
+
 // MCP Server-Sent Events endpoint (requires per-user auth)
 server.get("/mcp/events", async (request, reply) => {
   const rawToken = extractRawToken(request);
