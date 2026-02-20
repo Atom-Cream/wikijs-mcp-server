@@ -137,6 +137,30 @@ export function getWikiJsKeyForEmail(
   return loadMcpKeys(keysPath)[email.toLowerCase()]?.apiKey;
 }
 
+/**
+ * Returns the Wiki.js userId for the given email, or undefined if not found.
+ */
+export function getUserIdByEmail(
+  email: string,
+  keysPath: string
+): number | undefined {
+  return loadMcpKeys(keysPath)[email.toLowerCase()]?.userId;
+}
+
+/**
+ * Returns the Wiki.js userId for the given mcp-keys.json groupId, or undefined.
+ * Used to resolve raw Wiki.js token (grp field) → userId.
+ */
+export function getUserIdByGroupId(
+  groupId: number,
+  keysPath: string
+): number | undefined {
+  for (const entry of Object.values(loadMcpKeys(keysPath))) {
+    if (entry.groupId === groupId) return entry.userId;
+  }
+  return undefined;
+}
+
 /** Force a cache refresh — call this after provisioning a new key. */
 export function invalidateMcpKeysCache(): void {
   mcpKeysCache = null;

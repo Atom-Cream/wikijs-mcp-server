@@ -10,7 +10,7 @@ import { SSEManager } from "./mcp/sse.js";
 import { oauthPlugin } from "./oauth/routes.js";
 import { oauthConfig } from "./oauth/config.js";
 import { isOurJwt, verifyAccessToken } from "./oauth/jwt.js";
-import { getWikiJsKeyForEmail } from "./oauth/store.js";
+import { getWikiJsKeyForEmail, getUserIdByEmail, getUserIdByGroupId } from "./oauth/store.js";
 
 // Load environment variables from .env file
 dotenvConfig();
@@ -96,10 +96,31 @@ async function resolveWikiJsToken(rawToken: string): Promise<string | null> {
 }
 
 /**
+ * Resolve the raw bearer token to the Wiki.js userId of the caller.
+ * Used to patch pageHistory.authorId after page mutations.
+ * Returns undefined if the user cannot be determined (graceful degradation).
+ */
+async function resolveUserId(rawToken: string): Promise<number | undefined> {
+  // OAuth path: email is in the token claims → look up in mcp-keys.json
+  if (oauthConfig.jwtSecret && isOurJwt(rawToken, oauthConfig.issuer)) {
+    const claims = await verifyAccessToken(rawToken, oauthConfig.issuer, jwtSecretBytes);
+    if (claims?.email) {
+      return getUserIdByEmail(claims.email as string, oauthConfig.mcpKeysPath);
+    }
+    return undefined;
+  }
+  // Raw Wiki.js token: decode grp field → find matching entry in mcp-keys.json
+  const payload = decodeJwtPayload(rawToken);
+  if (!payload) return undefined;
+  const grpId = payload.grp as number;
+  return getUserIdByGroupId(grpId, oauthConfig.mcpKeysPath);
+}
+
+/**
  * Create a per-request WikiJsAPI instance from a resolved Wiki.js API key.
  */
-function createUserApi(token: string): WikiJsAPI {
-  return new WikiJsAPI(config.wikijs.baseUrl, token, WIKIJS_LOCALE);
+function createUserApi(token: string, userId?: number): WikiJsAPI {
+  return new WikiJsAPI(config.wikijs.baseUrl, token, WIKIJS_LOCALE, undefined, userId);
 }
 
 /**
@@ -221,7 +242,8 @@ server.post("/mcp", async (request, reply) => {
     }
   }
 
-  const userApi = createUserApi(wikiJsToken);
+  const userId = await resolveUserId(rawToken);
+  const userApi = createUserApi(wikiJsToken, userId);
   await jsonRpcRouter.handle(request, reply, userApi);
 });
 

@@ -6,6 +6,7 @@ import {
   ResponseResult,
 } from "./types.js";
 import { GraphQLClient, gql } from "graphql-request";
+import { fixPageAuthor } from "./db.js";
 
 // GraphQL API response interfaces
 interface PageResponse {
@@ -512,12 +513,14 @@ class WikiJsAPI {
   private baseUrl: string;
   private publicUrl: string;
   private locale: string;
+  readonly userId?: number;
 
   constructor(
     baseUrl: string = "http://localhost:3000",
     token: string = "",
     locale: string = "en",
-    publicUrl?: string
+    publicUrl?: string,
+    userId?: number
   ) {
     console.log(
       `[WikiJsAPI] Constructor called. baseUrl: ${baseUrl}, token: ${
@@ -530,6 +533,7 @@ class WikiJsAPI {
     // Use explicit publicUrl, fall back to the module-level WIKIJS_PUBLIC_URL constant
     this.publicUrl = publicUrl || WIKIJS_PUBLIC_URL;
     this.locale = locale;
+    this.userId = userId;
 
     if (token) {
       console.log("[WikiJsAPI] Setting Authorization header.");
@@ -994,6 +998,9 @@ class WikiJsAPI {
         );
       }
       const page = data.pages.create.page;
+      if (this.userId) {
+        fixPageAuthor(page.id, this.userId).then(() => flushWikiCache()).catch(() => {});
+      }
       return {
         ...page,
         url: this.generatePageUrl(page.path),
@@ -1097,10 +1104,16 @@ class WikiJsAPI {
         console.log(
           "[WikiJsAPI] updatePage: page not returned, possibly insufficient permissions"
         );
+        if (this.userId) {
+          fixPageAuthor(id, this.userId).then(() => flushWikiCache()).catch(() => {});
+        }
         return await this.getPage(id);
       }
 
       const page = data.pages.update.page;
+      if (this.userId) {
+        fixPageAuthor(page.id, this.userId).then(() => flushWikiCache()).catch(() => {});
+      }
       return {
         ...page,
         url: this.generatePageUrl(page.path),
@@ -1693,6 +1706,23 @@ class WikiJsAPI {
 const WIKIJS_BASE_URL = process.env.WIKIJS_BASE_URL || "http://localhost:3000";
 const WIKIJS_TOKEN = process.env.WIKIJS_TOKEN || "";
 const WIKIJS_LOCALE = process.env.WIKIJS_LOCALE || "en";
+
+// Admin client used only for post-mutation cache flush (requires full-access token).
+const adminFlushClient = new GraphQLClient(`${WIKIJS_BASE_URL}/graphql`, {
+  headers: {
+    Authorization: `Bearer ${process.env.WIKIJS_ADMIN_TOKEN || WIKIJS_TOKEN}`,
+  },
+});
+
+async function flushWikiCache(): Promise<void> {
+  try {
+    const mutation = gql`mutation { pages { flushCache { responseResult { succeeded } } } }`;
+    await adminFlushClient.request(mutation);
+    console.log("[WikiJsAPI] Page cache flushed after author patch");
+  } catch (err: any) {
+    console.error("[WikiJsAPI] Cache flush failed (non-fatal):", err.message);
+  }
+}
 // Public URL used in page links returned to clients. Falls back to WIKIJS_BASE_URL
 // so existing deployments work without change, but set WIKIJS_PUBLIC_URL to the
 // public hostname (e.g. https://knb.bulksource.com) so Claude Desktop can open links.
