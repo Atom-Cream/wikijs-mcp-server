@@ -40,6 +40,20 @@ export const oauthConfig = {
       "https://mcp.knb.bulksource.com/oauth/callback/google",
   },
 
+  // ---- Microsoft Entra ID identity provider ----
+  entra: {
+    clientId: process.env.ENTRA_CLIENT_ID || "",
+    clientSecret: process.env.ENTRA_CLIENT_SECRET || "",
+    // Tenant ID: use "common" for multi-tenant / personal accounts,
+    // or your specific tenant GUID / domain for single-tenant.
+    tenantId: process.env.ENTRA_TENANT_ID || "common",
+    // Must match an authorized redirect URI in the Azure app registration.
+    // Points to THIS server's callback endpoint, not Claude's.
+    redirectUri:
+      process.env.ENTRA_REDIRECT_URI ||
+      "https://mcp.knb.bulksource.com/oauth/callback/microsoft",
+  },
+
   // Name of the Wiki.js permission group whose rules are copied for new users
   wikijsTemplateGroup: process.env.WIKIJS_TEMPLATE_GROUP || "editors",
 };
