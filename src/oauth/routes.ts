@@ -31,6 +31,7 @@ import {
 import { randomBytes, createHash } from "crypto";
 import { oauthConfig } from "./config.js";
 import { GoogleProvider } from "./providers/google.js";
+import { EntraProvider } from "./providers/entra.js";
 import { type IdentityProvider } from "./providers/base.js";
 import {
   storeSession,
@@ -63,6 +64,18 @@ if (oauthConfig.google.clientId) {
       oauthConfig.google.clientId,
       oauthConfig.google.clientSecret,
       oauthConfig.google.redirectUri
+    )
+  );
+}
+
+if (oauthConfig.entra.clientId) {
+  providers.set(
+    "microsoft",
+    new EntraProvider(
+      oauthConfig.entra.clientId,
+      oauthConfig.entra.clientSecret,
+      oauthConfig.entra.redirectUri,
+      oauthConfig.entra.tenantId
     )
   );
 }
@@ -203,8 +216,79 @@ export const oauthPlugin: FastifyPluginAsync = async (
         }
       }
 
-      const providerName = q.provider || "google";
-      const provider = providers.get(providerName);
+      // If no provider specified and multiple are registered, show a picker page.
+      // If only one provider is registered, default to it automatically.
+      let providerName = q.provider;
+      if (!providerName) {
+        if (providers.size === 1) {
+          providerName = providers.keys().next().value as string;
+        } else {
+          // Show provider selection page — preserve all OAuth params in each button URL.
+          const baseParams = new URLSearchParams({
+            response_type: q.response_type!,
+            client_id: q.client_id!,
+            redirect_uri: q.redirect_uri!,
+            code_challenge: q.code_challenge!,
+            code_challenge_method: q.code_challenge_method || "S256",
+            ...(q.state ? { state: q.state } : {}),
+          });
+          const buttons = Array.from(providers.entries())
+            .map(([name]) => {
+              const p = new URLSearchParams(baseParams);
+              p.set("provider", name);
+              const label =
+                name === "google"
+                  ? "Sign in with Google"
+                  : name === "microsoft"
+                  ? "Sign in with Microsoft"
+                  : `Sign in with ${name.charAt(0).toUpperCase() + name.slice(1)}`;
+              return `<a href="/oauth/authorize?${p}" class="btn btn-${name}">${label}</a>`;
+            })
+            .join("\n          ");
+          reply.header("Content-Type", "text/html; charset=utf-8");
+          return reply.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in to Wiki.js MCP</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0;
+      background: #f5f5f5;
+    }
+    .card {
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.12);
+      padding: 40px 48px; max-width: 400px; width: 100%; text-align: center;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; color: #1a1a1a; }
+    p  { color: #666; margin: 0 0 32px; font-size: .95rem; }
+    .btn {
+      display: block; width: 100%; padding: 12px 16px; margin-bottom: 12px;
+      border-radius: 8px; font-size: 1rem; font-weight: 500;
+      text-decoration: none; cursor: pointer; transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-google  { background: #fff; color: #444; border: 1px solid #ddd; }
+    .btn-microsoft { background: #0078d4; color: #fff; border: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Sign in to Wiki.js MCP</h1>
+    <p>Choose your account type to continue.</p>
+    ${buttons}
+  </div>
+</body>
+</html>`);
+        }
+      }
+
+      const provider = providers.get(providerName!);
       if (!provider) {
         return reply
           .code(400)
