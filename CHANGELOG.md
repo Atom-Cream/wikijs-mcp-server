@@ -1,134 +1,115 @@
 # Changelog
 
-Все важные изменения в проекте будут документированы в этом файле.
+All notable changes to this project will be documented in this file.
+
+## [2.0.0] - 2026-03-19
+
+### Added
+- **MCP HTTP Protocol**: Full JSON-RPC 2.0 + Server-Sent Events (SSE) transport (MCP 2025-03-26 spec)
+- **OAuth 2.1 support**: Authorization server for Claude Desktop Custom Connectors with provider picker UI
+- **Microsoft Entra ID OAuth provider**: Enterprise SSO integration
+- **Google OAuth provider**: Reuses existing Wiki.js Google OAuth infrastructure
+- **Per-user authentication**: Individual API keys per user; edits attributed in Wiki.js page history
+- **Dockerfile**: Containerized deployment support
+- **DB patch for history attribution**: Direct PostgreSQL patch to fix page history attribution for MCP edits
+- **`update_page` title parameter**: Optional `title` field for page updates
+- **Per-user MCP key provisioning script**: `scripts/provision-mcp-keys.sh`
+- **`OAUTH_SETUP.md`**: Administrator setup guide for OAuth
+
+### Changed
+- **Locale default**: Changed from `ru` to `en`
+- **Project structure**: Refactored to factory pattern for per-request WikiJsAPI instances
+- **MCP tool errors**: Return `isError: true` instead of JSON-RPC errors for tool failures
+- **`update_page`**: Fetches page metadata before update for proper history entries; sets `isPublished: true`
+
+### Fixed
+- JSON-RPC compliance: removed `outputSchema` and non-standard metadata from `tools/list`
+- Handle `resources/list`, `prompts/list`, `logging/setLevel` gracefully (no crash on unknown methods)
+- Don't send JSON-RPC response to notifications
+- Handle GET `/mcp` for Streamable HTTP SSE transport
+- Parse `application/x-www-form-urlencoded` on `/oauth/token`
+- Fix Fastify "Reply was already sent" error on `/mcp` endpoint
+- Fix GraphQL queries: removed `updatedAt` from `UserMinimal` and `GroupMinimal`
+
+---
 
 ## [1.2.0] - 2025-05-22
 
-### ✨ Добавлено
+### Added
 
-- **Умный многоуровневый поиск**: Полностью переработанная система поиска с 4 этапами
-- **HTTP fallback для поиска**: Альтернативный метод получения содержимого при ограниченных правах API
-- **Поиск по содержимому**: Глубокий поиск внутри HTML-содержимого страниц
-- **Принудительная проверка**: Резервный поиск на известных страницах
-- **Автоматическая публикация**: Страницы автоматически публикуются при обновлении
+- **Smart multi-level search**: Fully reworked search system with 4 stages
+- **HTTP fallback for search**: Alternative content retrieval method when API permissions are limited
+- **Content search**: Deep search inside HTML page content
+- **Forced check**: Fallback search on known pages
+- **Auto-publish**: Pages are automatically published on update
 
-### 🔧 Изменено
+### Changed
 
-- **Метод `searchPages()`**: Теперь использует многоступенчатый алгоритм поиска
-- **Новый метод `getPageContentViaHTTP()`**: Получение содержимого через HTTP-запросы
-- **Обновлен GraphQL запрос `updatePage`**: Добавлен параметр `isPublished: true`
-- **Улучшена обработка ошибок**: Лучшее логирование и fallback-механизмы
+- **`searchPages()` method**: Now uses a multi-stage search algorithm
+- **New `getPageContentViaHTTP()` method**: Content retrieval via HTTP requests
+- **Updated `updatePage` GraphQL query**: Added `isPublished: true` parameter
+- **Improved error handling**: Better logging and fallback mechanisms
 
-### 🐛 Исправлено
+### Fixed
 
-- **Проблема с правами доступа**: Решена ошибка "You are not authorized to view this page"
-- **Некорректное извлечение HTML**: Исправлен regex для поиска контента в `<template slot="contents">`
-- **Отсутствие автопубликации**: Страницы теперь автоматически публикуются при создании/обновлении
-- **Ограниченные результаты listPages**: Добавлены альтернативные методы поиска
+- **Permission issue**: Resolved "You are not authorized to view this page" error
+- **Incorrect HTML extraction**: Fixed regex for content in `<template slot="contents">`
+- **Missing auto-publish**: Pages are now automatically published on create/update
+- **Limited `listPages` results**: Added alternative search methods
 
-### 🚀 Этапы нового поиска
+### Search pipeline stages
 
-1. **GraphQL API поиск** - быстрый поиск по индексированному содержимому
-2. **Поиск по метаданным** - поиск в названиях, путях и описаниях
-3. **HTTP поиск по содержимому** - извлечение и поиск в HTML-содержимом
-4. **Принудительная проверка** - проверка известных страниц (ID 103-110)
+1. **GraphQL API search** — fast search over indexed content
+2. **Metadata search** — search in titles, paths, and descriptions
+3. **HTTP content search** — extract and search in HTML content
+4. **Forced check** — check known pages (IDs 103–110)
 
-### 🧪 Протестированные сценарии
+### Project cleanup
 
-```bash
-✅ Поиск "ЗЕЛЕБОБА" → Страница ID 103 (поиск по содержимому)
-✅ Поиск "find me" → Страница ID 108 (поиск по названию)
-✅ HTTP fallback при ошибках GraphQL API
-✅ Автоматическая публикация обновлений
-✅ Корректное формирование URL
-```
-
-### 📝 Техническая документация
-
-- Добавлена секция о умном поиске в `README.md`
-- Описаны алгоритмы обработки HTML
-- Документированы решения проблем с правами доступа
-
-### 🔄 Очистка проекта
-
-- Удалены отладочные файлы (`test-search-debug.js`, `test-update-publish.js`)
-- Удалены временные логи и PID файлы
-- Очищена структура проекта от лишних файлов
+- Removed debug files (`test-search-debug.js`, `test-update-publish.js`)
+- Removed temporary logs and PID files
 
 ---
 
 ## [1.1.0] - 2025-05-22
 
-### ✨ Добавлено
+### Added
 
-- **Автоматическое формирование URL страниц**: Все методы работы со страницами теперь возвращают поле `url` с прямой ссылкой на страницу
-- **Поддержка локализации URL**: Возможность настройки локали через переменную `WIKIJS_LOCALE`
-- **Гибкая настройка базового URL**: Переменная `WIKIJS_BASE_URL` для настройки адреса Wiki.js сервера
+- **Automatic page URL generation**: All page methods now return a `url` field with a direct link to the page
+- **URL locale support**: Configure locale via `WIKIJS_LOCALE` environment variable
+- **Flexible base URL**: `WIKIJS_BASE_URL` variable for Wiki.js server address
 
-### 🔧 Изменено
+### Changed
 
-- **Обновлен тип `WikiJsPage`**: Добавлено опциональное поле `url: string`
-- **Обновлен класс `WikiJsAPI`**: Конструктор теперь принимает параметр `locale`
-- **Обновлены методы API**:
-  - `getPage()` - возвращает URL страницы
-  - `listPages()` - возвращает URL для каждой страницы
-  - `searchPages()` - возвращает URL в результатах поиска
-  - `createPage()` - возвращает URL созданной страницы
-  - `updatePage()` - возвращает URL обновленной страницы
+- **`WikiJsPage` type**: Added optional `url: string` field
+- **`WikiJsAPI` class**: Constructor now accepts a `locale` parameter
+- **Updated API methods**:
+  - `getPage()` — returns page URL
+  - `listPages()` — returns URL for each page
+  - `searchPages()` — returns URL in search results
+  - `createPage()` — returns URL of the created page
+  - `updatePage()` — returns URL of the updated page
 
-### 📝 Документация
-
-- Обновлен `README.md` с описанием новой функциональности
-- Добавлен файл `env.example` с примерами настройки
-- Создан тестовый скрипт `test-url-functionality.js`
-
-### 🔄 Переменные окружения
+### Environment variables
 
 ```bash
-# Новые переменные
-WIKIJS_LOCALE=ru              # Локаль для URL (по умолчанию: ru)
+# New variables
+WIKIJS_LOCALE=ru              # Locale for URL (default: ru)
 
-# Обновленные переменные
-WIKIJS_BASE_URL=http://localhost:8080  # Теперь учитывается для формирования URL
+# Updated variables
+WIKIJS_BASE_URL=http://localhost:8080  # Now used for URL generation
 ```
 
-### 🛠 Формирование URL
-
-URL формируется по схеме: `{WIKIJS_BASE_URL}/{WIKIJS_LOCALE}/{page_path}`
-
-**Примеры:**
-
-- `http://localhost:8080/ru/test/my-page`
-- `https://wiki.company.com/en/docs/api`
-
-### ⚡ Совместимость
-
-- ✅ Обратная совместимость: все существующие поля остаются без изменений
-- ✅ Опциональное поле `url`: не влияет на существующий код
-- ✅ Настройки по умолчанию: работает без дополнительной настройки
-
-### 🧪 Тестирование
-
-Для тестирования новой функциональности:
-
-```bash
-# Настройте переменные окружения
-export WIKIJS_BASE_URL=http://localhost:8080
-export WIKIJS_TOKEN=your_token_here
-export WIKIJS_LOCALE=ru
-
-# Запустите тест
-node test-url-functionality.js
-```
+URL format: `{WIKIJS_BASE_URL}/{WIKIJS_LOCALE}/{page_path}`
 
 ---
 
 ## [1.0.0] - 2025-05-22
 
-### ✨ Начальная версия
+### Added
 
-- Базовые инструменты для работы с Wiki.js через MCP
-- Управление страницами (CRUD операции)
-- Управление пользователями
-- Поиск по страницам и пользователям
-- GraphQL API интеграция
+- Base tools for working with Wiki.js via MCP
+- Page management (CRUD operations)
+- User management
+- Page and user search
+- GraphQL API integration

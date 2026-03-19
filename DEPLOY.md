@@ -18,7 +18,7 @@ All existing REST endpoints remain unchanged.
 ### 1. SSH into the remote server
 
 ```bash
-ssh your-user@mcp.knb.bulksource.com
+ssh your-user@<your-mcp-host>
 ```
 
 ### 2. Navigate to the project directory
@@ -145,8 +145,8 @@ Once the server is verified, team members can add this to their Claude Desktop c
   "mcpServers": {
     "wikijs": {
       "transport": "http",
-      "url": "https://mcp.knb.bulksource.com/mcp",
-      "events": "https://mcp.knb.bulksource.com/mcp/events"
+      "url": "https://<your-mcp-host>/mcp",
+      "events": "https://<your-mcp-host>/mcp/events"
     }
   }
 }
@@ -155,7 +155,7 @@ Once the server is verified, team members can add this to their Claude Desktop c
 ## Claude Code CLI Configuration
 
 ```bash
-claude mcp add wikijs --transport http --url https://mcp.knb.bulksource.com/mcp
+claude mcp add wikijs --transport http --url https://<your-mcp-host>/mcp
 ```
 
 ---
@@ -191,7 +191,7 @@ npm run build
 
 ## Reverse Proxy Note
 
-If the server runs behind nginx/Caddy on `mcp.knb.bulksource.com`, ensure:
+If the server runs behind nginx/Caddy on `<your-mcp-host>`, ensure:
 - `POST /mcp` is proxied with JSON body support
 - `GET /mcp/events` is proxied with SSE support (no buffering)
 

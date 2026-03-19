@@ -585,44 +585,7 @@ With limited GraphQL API permissions, the system:
 
 ## 📝 Changelog
 
-### Version 1.3.0 - Unpublished Pages Management (Latest)
-
-#### 🆕 New Features:
-
-- **`list_all_pages`** - Get all pages including unpublished ones
-- **`search_unpublished_pages`** - Search specifically in unpublished pages
-- **`force_delete_page`** - Enhanced deletion that works with unpublished pages
-- **`get_page_status`** - Check publication status of any page
-- **`publish_page`** - Publish unpublished pages programmatically
-
-#### 🔧 Improvements:
-
-- Enhanced server API with new routes for unpublished page management
-- Better error handling for page deletion operations
-- Comprehensive GraphQL mutation support for advanced page operations
-- **Restructured project**: Moved JavaScript files to `lib/` directory for better organization
-
-#### 🐛 Bug Fixes:
-
-- Fixed issues with accessing unpublished pages through standard APIs
-- Improved authentication handling for admin-level operations
-
-### Version 1.2.0 - International Release
-
-#### 🌍 Internationalization:
-
-- Complete English translation of documentation
-- README.md and QUICK_START.md now available in English
-- Prepared for international market expansion
-
-### Version 1.1.0 - Enhanced Search & User Management
-
-#### ✨ Features:
-
-- Smart multi-method page search (GraphQL + content + metadata)
-- User management tools (create, update, search)
-- Group management capabilities
-- Improved content extraction from HTML pages
+See [CHANGELOG.md](./CHANGELOG.md) for the full release history.
 
 ## 🛠️ Available Tools
 
