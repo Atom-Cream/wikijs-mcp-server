@@ -203,6 +203,93 @@ Add to VS Code settings:
 }
 ```
 
+### Claude Desktop
+
+Claude Desktop connects via OAuth 2.1 — no token management required.  Any team
+member can connect by signing in with their Google account.
+
+#### For Users
+
+1. Open **Claude Desktop → Settings → Connectors**
+2. Find the **BulkSource Knowledge Base** connector (added by your org admin)
+3. Click **"Connect"** → sign in with your `act.software` Google account
+4. All 17 Wiki.js tools are now available in every Claude Desktop conversation
+
+> You must have logged in to the Wiki.js web UI at least once before connecting.
+
+#### For Org Admins
+
+See [OAUTH_SETUP.md](./OAUTH_SETUP.md) for the full setup guide (Google OAuth app,
+server secrets, docker-compose config, connector registration).
+
+The short version — add the connector at the **organisation** level:
+
+| Field | Value |
+|---|---|
+| Connector URL | `https://mcp.knb.bulksource.com/mcp` |
+| OAuth Client ID | `wikijs-mcp-client` |
+| OAuth Client Secret | *(value of `OAUTH_CLIENT_SECRET` in your `.env`)* |
+
+> **Troubleshooting:** if tools report errors after a server update, remove the
+> connector at the org level and re-add it to clear Claude Desktop's cached tool
+> metadata.
+
+---
+
+### Claude Code
+
+#### Configuring Claude Code
+
+Get the MCP server URL and API token from your admin, then configure Claude Code using one of the two methods below.
+
+**Option A — Project-level** (recommended): create `.mcp.json` in your project directory (the folder where you run `claude`):
+
+```json
+{
+  "mcpServers": {
+    "wikijs": {
+      "type": "http",
+      "url": "https://YOUR_MCP_SERVER/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_WIKIJS_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+**Option B — Global** (available in all projects): use the CLI:
+
+```bash
+claude mcp add --transport http wikijs https://YOUR_MCP_SERVER/mcp \
+  --header "Authorization: Bearer YOUR_WIKIJS_API_TOKEN"
+```
+
+> **Notes:**
+> - `type` must be `"http"` (not `"url"`)
+> - Token must be a single unbroken string — no line breaks or spaces
+> - `~/.claude/.mcp.json` is **not** read by Claude Code — use the CLI command above for global config
+
+Relaunch Claude Code and verify with `/mcp` — you should see `wikijs` listed as connected.
+
+#### For Admins: Provisioning Per-User API Keys
+
+Each user's personal token is passed through the MCP server directly to Wiki.js, so **edits are attributed to the token owner** in page history — not the admin. This requires each user to have their own token scoped to their own permission group. The provisioning script automates group creation and key generation:
+
+```bash
+./scripts/provision-mcp-keys.sh <admin-token> "Authors & Editors" [wikijs-url]
+```
+
+- `admin-token` — full-access Wiki.js API token (Admin → API Access)
+- `"Authors & Editors"` — template group whose permissions to copy
+- `wikijs-url` — Wiki.js base URL (default: `http://localhost:3000`)
+
+Generated keys are saved to `mcp-keys.json` (gitignored). Distribute each user's key privately — never commit this file. The script is idempotent: re-run it whenever new users are added.
+
+#### Wiki.js Cache
+
+After updating pages via MCP, content changes may not immediately appear in the Wiki.js UI. If you see stale content: **Administration → Utilities → Flush Cache**.
+
 ## 🛠 Development
 
 ### Project Structure
@@ -498,44 +585,7 @@ With limited GraphQL API permissions, the system:
 
 ## 📝 Changelog
 
-### Version 1.3.0 - Unpublished Pages Management (Latest)
-
-#### 🆕 New Features:
-
-- **`list_all_pages`** - Get all pages including unpublished ones
-- **`search_unpublished_pages`** - Search specifically in unpublished pages
-- **`force_delete_page`** - Enhanced deletion that works with unpublished pages
-- **`get_page_status`** - Check publication status of any page
-- **`publish_page`** - Publish unpublished pages programmatically
-
-#### 🔧 Improvements:
-
-- Enhanced server API with new routes for unpublished page management
-- Better error handling for page deletion operations
-- Comprehensive GraphQL mutation support for advanced page operations
-- **Restructured project**: Moved JavaScript files to `lib/` directory for better organization
-
-#### 🐛 Bug Fixes:
-
-- Fixed issues with accessing unpublished pages through standard APIs
-- Improved authentication handling for admin-level operations
-
-### Version 1.2.0 - International Release
-
-#### 🌍 Internationalization:
-
-- Complete English translation of documentation
-- README.md and QUICK_START.md now available in English
-- Prepared for international market expansion
-
-### Version 1.1.0 - Enhanced Search & User Management
-
-#### ✨ Features:
-
-- Smart multi-method page search (GraphQL + content + metadata)
-- User management tools (create, update, search)
-- Group management capabilities
-- Improved content extraction from HTML pages
+See [CHANGELOG.md](./CHANGELOG.md) for the full release history.
 
 ## 🛠️ Available Tools
 

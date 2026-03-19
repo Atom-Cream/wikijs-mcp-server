@@ -41,3 +41,6 @@ yarn-error.log*
 *.tmp
 *.temp
 test_results.txt
+
+# MCP provisioning secrets
+mcp-keys.json.mcp.json
