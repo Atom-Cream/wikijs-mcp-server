@@ -416,9 +416,14 @@ server.post("/create_page", async (request) => {
 
 // Update page
 server.post("/update_page", async (request) => {
-  const { id, content } = request.body as { id: number; content: string };
+  const { id, content, title, description } = request.body as {
+    id: number;
+    content: string;
+    title?: string;
+    description?: string;
+  };
   try {
-    return await wikiJsApi.updatePage(id, content);
+    return await wikiJsApi.updatePage(id, content, title, description);
   } catch (error) {
     server.log.error(error);
     return { error: String(error) };

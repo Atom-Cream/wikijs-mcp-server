@@ -154,13 +154,27 @@ export class WikiJsApi {
   }
 
   // Обновление страницы
-  async updatePage(id: number, content: string): Promise<ResponseResult> {
+  async updatePage(
+    id: number,
+    content: string,
+    title?: string,
+    description?: string
+  ): Promise<ResponseResult> {
+    const extraFields = [
+      title !== undefined ? `title: ${JSON.stringify(title)}` : null,
+      description !== undefined
+        ? `description: ${JSON.stringify(description)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n            ");
     const mutation = `
       mutation {
         pages {
           update (
             id: ${id}
             content: ${JSON.stringify(content)}
+            ${extraFields}
           ) {
             responseResult {
               succeeded

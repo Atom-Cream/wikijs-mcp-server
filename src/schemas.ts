@@ -118,6 +118,15 @@ export const CreatePageParamsSchema = z.object({
 export const UpdatePageParamsSchema = z.object({
   id: z.number().int().positive().describe("ID страницы"),
   content: z.string().min(1).describe("Новое содержимое страницы"),
+  title: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Новый заголовок страницы (опционально)"),
+  description: z
+    .string()
+    .optional()
+    .describe("Новое описание страницы (опционально)"),
 });
 
 /**
