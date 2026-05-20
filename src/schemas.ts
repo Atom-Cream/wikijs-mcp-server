@@ -128,6 +128,15 @@ export const DeletePageParamsSchema = z.object({
 });
 
 /**
+ * Схема параметров для перемещения страницы
+ */
+export const MovePageParamsSchema = z.object({
+  id: z.number().int().positive().describe("ID страницы"),
+  destinationPath: z.string().min(1).describe("Новый путь страницы"),
+  destinationLocale: z.string().optional().describe("Локаль (например 'en')"),
+});
+
+/**
  * Схема параметров для поиска пользователей
  */
 export const SearchUsersParamsSchema = z.object({
@@ -236,6 +245,7 @@ export const ToolParamsSchemas = {
   create_page: CreatePageParamsSchema,
   update_page: UpdatePageParamsSchema,
   delete_page: DeletePageParamsSchema,
+  move_page: MovePageParamsSchema,
   search_users: SearchUsersParamsSchema,
   create_user: CreateUserParamsSchema,
   update_user: UpdateUserParamsSchema,
