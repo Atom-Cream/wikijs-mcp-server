@@ -71,6 +71,14 @@ interface PageDeleteResponse {
   };
 }
 
+interface PageMoveResponse {
+  pages: {
+    move: {
+      responseResult: ResponseResult;
+    };
+  };
+}
+
 interface UsersListResponse {
   users: {
     list: WikiJsUser[];
@@ -442,6 +450,36 @@ export const wikiJsTools: WikiJsToolDefinition[] = [
           },
         },
         required: ["query"],
+      },
+    },
+  },
+
+  // Move page to a new path
+  {
+    type: "function",
+    function: {
+      name: "move_page",
+      description:
+        "Move (relocate) a Wiki.js page to a new path/folder. Use this instead of update_page when you need to change the page's location in the wiki tree.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to move",
+          },
+          destinationPath: {
+            type: "string",
+            description:
+              "New path for the page (e.g. 'folder/subfolder/page-slug'). Must not include a leading slash.",
+          },
+          destinationLocale: {
+            type: "string",
+            description:
+              "Locale for the destination path (e.g. 'en', 'ru'). Defaults to the current page locale if omitted.",
+          },
+        },
+        required: ["id", "destinationPath"],
       },
     },
   },
@@ -1171,6 +1209,67 @@ class WikiJsAPI {
     }
   }
 
+  // Move page to a new path
+  async movePage(
+    id: number,
+    destinationPath: string,
+    destinationLocale?: string
+  ): Promise<{ success: boolean; message: string | undefined; page?: WikiJsPage }> {
+    console.log(
+      `[WikiJsAPI] movePage called with id: ${id}, destinationPath: ${destinationPath}, destinationLocale: ${destinationLocale}`
+    );
+
+    // Resolve locale: use provided value, or fall back to the page's current locale
+    let locale = destinationLocale;
+    if (!locale) {
+      const metaQuery = gql`
+        query GetPageLocale($id: Int!) {
+          pages {
+            single(id: $id) {
+              locale
+            }
+          }
+        }
+      `;
+      const metaData: any = await this.client.request(metaQuery, { id });
+      locale = metaData.pages.single.locale || this.locale;
+    }
+
+    const mutation = gql`
+      mutation MovePage($id: Int!, $destinationPath: String!, $destinationLocale: String!) {
+        pages {
+          move(id: $id, destinationPath: $destinationPath, destinationLocale: $destinationLocale) {
+            responseResult {
+              succeeded
+              errorCode
+              slug
+              message
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = { id, destinationPath, destinationLocale: locale };
+    console.log(
+      `[WikiJsAPI] movePage: sending GraphQL mutation with variables: ${JSON.stringify(variables)}`
+    );
+    try {
+      const data = await this.client.request<PageMoveResponse>(mutation, variables);
+      console.log("[WikiJsAPI] movePage: mutation completed successfully.");
+      const result = data.pages.move.responseResult;
+      if (!result.succeeded) {
+        return { success: false, message: result.message };
+      }
+      // Fetch updated page so we can return the new URL
+      const page = await this.getPage(id);
+      return { success: true, message: result.message, page };
+    } catch (error) {
+      console.error(`[WikiJsAPI] movePage: GraphQL mutation error: ${error}`, error);
+      throw error;
+    }
+  }
+
   // List users
   async listUsers(): Promise<WikiJsUser[]> {
     console.log("[WikiJsAPI] listUsers called.");
@@ -1780,6 +1879,10 @@ export function createToolImplementations(api: WikiJsAPI): Record<string, (param
       console.log(`[Implementations] delete_page called with params: ${JSON.stringify(params)}`);
       return await api.deletePage(params.id);
     },
+    move_page: async (params: any) => {
+      console.log(`[Implementations] move_page called with params: ${JSON.stringify(params)}`);
+      return await api.movePage(params.id, params.destinationPath, params.destinationLocale);
+    },
     list_users: async (params: any) => {
       console.log(`[Implementations] list_users called with params: ${JSON.stringify(params)}`);
       return await api.listUsers();
@@ -2001,6 +2104,36 @@ export const wikiJsToolsWithImpl = [
       },
     },
     implementation: implementations.delete_page,
+  },
+  // Move page to a new path
+  {
+    type: "function",
+    function: {
+      name: "move_page",
+      description:
+        "Move (relocate) a Wiki.js page to a new path/folder. Use this instead of update_page when you need to change the page's location in the wiki tree.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to move",
+          },
+          destinationPath: {
+            type: "string",
+            description:
+              "New path for the page (e.g. 'folder/subfolder/page-slug'). Must not include a leading slash.",
+          },
+          destinationLocale: {
+            type: "string",
+            description:
+              "Locale for the destination path (e.g. 'en', 'ru'). Defaults to the current page locale if omitted.",
+          },
+        },
+        required: ["id", "destinationPath"],
+      },
+    },
+    implementation: implementations.move_page,
   },
   // List users
   {
