@@ -256,6 +256,11 @@ export const wikiJsTools: WikiJsToolDefinition[] = [
             type: "string",
             description: "New page title (optional, only updated if provided)",
           },
+          description: {
+            type: "string",
+            description:
+              "New page description (optional, only updated if provided)",
+          },
         },
         required: ["id", "content"],
       },
@@ -1053,8 +1058,17 @@ class WikiJsAPI {
   }
 
   // Update page
-  async updatePage(id: number, content: string, title?: string): Promise<WikiJsPage> {
-    console.log(`[WikiJsAPI] updatePage called with id: ${id}, title: ${title ?? "(unchanged)"}`);
+  async updatePage(
+    id: number,
+    content: string,
+    title?: string,
+    description?: string
+  ): Promise<WikiJsPage> {
+    console.log(
+      `[WikiJsAPI] updatePage called with id: ${id}, title: ${title ?? "(unchanged)"}, description: ${
+        description ?? "(unchanged)"
+      }`
+    );
 
     // Fetch current page metadata first — the Wiki.js update mutation requires
     // all fields to be present, otherwise it saves content silently without
@@ -1120,7 +1134,7 @@ class WikiJsAPI {
       id,
       content,
       title: title ?? meta.title,
-      description: meta.description ?? "",
+      description: description ?? meta.description ?? "",
       editor: meta.editor || "markdown",
       locale: meta.locale || "en",
       isPublished: meta.isPublished ?? true,
@@ -1873,7 +1887,12 @@ export function createToolImplementations(api: WikiJsAPI): Record<string, (param
     },
     update_page: async (params: any) => {
       console.log(`[Implementations] update_page called with params: ${JSON.stringify(params)}`);
-      return await api.updatePage(params.id, params.content, params.title);
+      return await api.updatePage(
+        params.id,
+        params.content,
+        params.title,
+        params.description
+      );
     },
     delete_page: async (params: any) => {
       console.log(`[Implementations] delete_page called with params: ${JSON.stringify(params)}`);
@@ -2079,6 +2098,11 @@ export const wikiJsToolsWithImpl = [
           title: {
             type: "string",
             description: "New page title (optional, only updated if provided)",
+          },
+          description: {
+            type: "string",
+            description:
+              "New page description (optional, only updated if provided)",
           },
         },
         required: ["id", "content"],

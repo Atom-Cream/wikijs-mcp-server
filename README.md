@@ -598,7 +598,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for the full release history.
 | `list_pages`                   | List pages with sorting                           | `limit?: number, orderBy?: string`                                                    |
 | `search_pages`                 | Search pages by query                             | `query: string, limit?: number`                                                       |
 | `create_page`                  | Create new page                                   | `title: string, content: string, path: string, description?: string, tags?: string[]` |
-| `update_page`                  | Update existing page                              | `id: number, content: string`                                                         |
+| `update_page`                  | Update existing page                              | `id: number, content: string, title?: string, description?: string`                   |
 | `delete_page`                  | Delete page                                       | `id: number`                                                                          |
 | **`list_all_pages`**           | **🆕 List all pages including unpublished**       | `limit?: number, orderBy?: string, includeUnpublished?: boolean`                      |
 | **`search_unpublished_pages`** | **🆕 Search only unpublished pages**              | `query: string, limit?: number`                                                       |
