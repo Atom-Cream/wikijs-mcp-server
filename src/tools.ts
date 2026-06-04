@@ -229,6 +229,11 @@ export const wikiJsTools: WikiJsToolDefinition[] = [
             },
             description: "Page tags",
           },
+          published: {
+            type: "boolean",
+            description:
+              "Whether the page is published and visible to all users (default: true). Set to false to save as a draft visible only to editors.",
+          },
         },
         required: ["title", "content", "path"],
       },
@@ -953,12 +958,13 @@ class WikiJsAPI {
     content: string,
     path: string,
     description: string = "",
-    tags: string[] = ["mcp", "test"]
+    tags: string[] = ["mcp", "test"],
+    isPublished: boolean = true
   ): Promise<WikiJsPage> {
     console.log(
       `[WikiJsAPI] createPage called with title: ${title}, path: ${path}, description: ${description}, tags: ${tags.join(
         ", "
-      )}`
+      )}, isPublished: ${isPublished}`
     );
     const mutation = gql`
       mutation CreatePage(
@@ -1014,7 +1020,7 @@ class WikiJsAPI {
       content,
       description: description || "",
       editor: "markdown",
-      isPublished: true,
+      isPublished,
       isPrivate: false,
       locale: this.locale,
       path,
@@ -1882,7 +1888,8 @@ export function createToolImplementations(api: WikiJsAPI): Record<string, (param
       console.log(`[Implementations] create_page called with params: ${JSON.stringify(params)}`);
       return await api.createPage(
         params.title, params.content, params.path,
-        params.description, params.tags || ["mcp", "test"]
+        params.description, params.tags || ["mcp", "test"],
+        params.published !== undefined ? params.published : true
       );
     },
     update_page: async (params: any) => {
@@ -2071,6 +2078,11 @@ export const wikiJsToolsWithImpl = [
               type: "string",
             },
             description: "Page tags",
+          },
+          published: {
+            type: "boolean",
+            description:
+              "Whether the page is published and visible to all users (default: true). Set to false to save as a draft visible only to editors.",
           },
         },
         required: ["title", "content", "path"],

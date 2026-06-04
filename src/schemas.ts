@@ -110,6 +110,13 @@ export const CreatePageParamsSchema = z.object({
   content: z.string().describe("Содержимое страницы в формате Markdown"),
   path: z.string().min(1).describe('Путь к странице (например, "folder/page")'),
   description: z.string().optional().describe("Описание страницы"),
+  tags: z.array(z.string()).optional().describe("Теги страницы"),
+  published: z
+    .boolean()
+    .optional()
+    .describe(
+      "Опубликовать страницу (по умолчанию true). Передайте false для сохранения как черновик."
+    ),
 });
 
 /**
