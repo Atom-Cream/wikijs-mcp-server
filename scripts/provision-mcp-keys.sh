@@ -117,7 +117,7 @@ CREATED=0
 
 # Get user list and process
 python3 - "$GROUPS_JSON" "$USERS_JSON" "$PERMISSIONS" "$PAGE_RULES" "$EXISTING_MCP_GROUPS" "$ADMIN_TOKEN" "$WIKIJS_URL" "$EXPIRATION" "$OUTPUT_FILE" "$TEMPLATE_GROUP" "$REDIRECT_ON_LOGIN" <<'PYEOF'
-import sys, json, subprocess, os
+import sys, json, subprocess, os, secrets, string
 
 groups_json = json.loads(sys.argv[1])
 users_json = json.loads(sys.argv[2])
@@ -130,6 +130,33 @@ expiration = sys.argv[8]
 output_file = sys.argv[9]
 template_name = sys.argv[10]
 redirect_on_login = sys.argv[11]
+
+LOCKERS_INDEX_PATH = "PersonalLockers"
+LOCKERS_INDEX_LOCALE = "en"
+
+# Full role set used in locker-specific page rules
+LOCKER_ROLES = [
+    "read:pages", "write:pages", "manage:pages", "delete:pages",
+    "read:source", "read:history", "read:assets", "write:assets",
+    "manage:assets", "write:scripts", "write:styles",
+    "read:comments", "write:comments", "manage:comments",
+]
+
+def rand_id():
+    return ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(10))
+
+def to_gql_input(obj, enum_fields=frozenset({'match'})):
+    if isinstance(obj, list):
+        return '[' + ', '.join(to_gql_input(i, enum_fields) for i in obj) + ']'
+    if isinstance(obj, dict):
+        parts = []
+        for k, v in obj.items():
+            if k in enum_fields and isinstance(v, str):
+                parts.append(f'{k}: {v}')
+            else:
+                parts.append(f'{k}: {to_gql_input(v, enum_fields)}')
+        return '{' + ', '.join(parts) + '}'
+    return json.dumps(obj)
 
 # Load existing output
 try:
@@ -207,22 +234,23 @@ for user in users:
     print(f"    Created group '{mcp_group_name}' (id: {group_id})")
 
     # --- Set permissions (copy from template) ---
+    # Build CamelCase locker name from display name (e.g. "David Drozdov" → "DavidDrozdov")
+    locker_name = ''.join(word.capitalize() for word in name.split())
+    locker_path = f"{LOCKERS_INDEX_PATH}/{locker_name}"
+
+    # Build page rules: template default + personal locker allow + PersonalLockers deny.
+    # We construct these from scratch so that manual UI edits (which reset permissions) are never needed.
+    default_rule = next((r for r in page_rules if r.get('path') == ''), page_rules[0])
+    custom_page_rules = [
+        default_rule,
+        {"id": rand_id(), "deny": False, "match": "START", "roles": LOCKER_ROLES,
+         "path": locker_path, "locales": []},
+        {"id": rand_id(), "deny": True,  "match": "START", "roles": LOCKER_ROLES,
+         "path": f"{LOCKERS_INDEX_PATH}/", "locales": []},
+    ]
+
     perms_str = json.dumps(permissions)
-    # GraphQL requires enum values (like match: START) without quotes.
-    # Convert page_rules to GraphQL input syntax manually.
-    def to_gql_input(obj, enum_fields=frozenset({'match'})):
-        if isinstance(obj, list):
-            return '[' + ', '.join(to_gql_input(i, enum_fields) for i in obj) + ']'
-        if isinstance(obj, dict):
-            parts = []
-            for k, v in obj.items():
-                if k in enum_fields and isinstance(v, str):
-                    parts.append(f'{k}: {v}')
-                else:
-                    parts.append(f'{k}: {to_gql_input(v, enum_fields)}')
-            return '{' + ', '.join(parts) + '}'
-        return json.dumps(obj)
-    rules_str = to_gql_input(page_rules)
+    rules_str = to_gql_input(custom_page_rules)
     update_query = 'mutation { groups { update(id: %d, name: "%s", redirectOnLogin: "%s", permissions: %s, pageRules: %s) { responseResult { succeeded message } } } }' % (
         group_id, mcp_group_name, redirect_on_login, perms_str, rules_str
     )
@@ -231,7 +259,7 @@ for user in users:
     if not update_resp['responseResult']['succeeded']:
         print(f"    ERROR setting permissions: {update_resp['responseResult']['message']}")
         continue
-    print(f"    Copied permissions from '{template_name}'")
+    print(f"    Set permissions + Personal Locker page rules")
 
     # --- Assign user to group ---
     result = gql(f'mutation {{ groups {{ assignUser(groupId: {group_id}, userId: {uid}) {{ responseResult {{ succeeded message }} }} }} }}')
@@ -250,6 +278,90 @@ for user in users:
 
     api_key = key_resp['key']
     print(f"    Created API key (mcp-{name})")
+
+    # --- Create Personal Locker page ---
+    locker_content = (
+        f"# {name} — Personal Locker\n\n"
+        "This is your private workspace. Create unpublished pages here for drafts, "
+        "notes, and work-in-progress. Pages remain invisible to others until published."
+    )
+    # Escape for GraphQL string (backslash first, then quotes, then real newlines → \n)
+    locker_content_escaped = locker_content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+    locker_title_escaped = name.replace('"', '\\"')
+    create_page_query = (
+        'mutation { pages { create('
+        f'content: "{locker_content_escaped}", '
+        f'description: "", '
+        f'editor: "markdown", '
+        f'isPublished: true, '
+        f'isPrivate: false, '
+        f'locale: "{LOCKERS_INDEX_LOCALE}", '
+        f'path: "{locker_path}", '
+        f'tags: [], '
+        f'title: "{locker_title_escaped}"'
+        ') { responseResult { succeeded message } page { id } } } }'
+    )
+    page_result = gql(create_page_query)
+    page_resp = page_result['data']['pages']['create']
+    if page_resp['responseResult']['succeeded']:
+        locker_page_id = page_resp['page']['id']
+        print(f"    Created Personal Locker page: {locker_path} (id: {locker_page_id})")
+    else:
+        msg = page_resp['responseResult']['message']
+        if 'already' in msg.lower() or 'exist' in msg.lower() or 'duplicate' in msg.lower():
+            print(f"    Personal Locker page already exists: {locker_path}")
+        else:
+            print(f"    WARNING: Could not create locker page: {msg}")
+
+    # --- Update PersonalLockers index page ---
+    index_result = gql(
+        f'{{ pages {{ singleByPath(path: "{LOCKERS_INDEX_PATH}", locale: "{LOCKERS_INDEX_LOCALE}") '
+        f'{{ id content }} }} }}'
+    )
+    if 'data' not in index_result or not index_result['data']:
+        print(f"    WARNING: Could not fetch PersonalLockers index (API error)")
+        index_page = None
+    else:
+        index_page = index_result['data']['pages']['singleByPath']
+    if index_page:
+        index_id = index_page['id']
+        index_content = index_page['content']
+        link_entry = f"| {name} | [/{locker_path}](/{locker_path}) |"
+        if f"/{locker_path}" in index_content:
+            print(f"    PersonalLockers index already contains entry for {name}")
+        else:
+            # Insert new row alphabetically into the table (by display name)
+            lines = index_content.split('\n')
+            table_rows = [(i, l) for i, l in enumerate(lines) if l.startswith('| ') and l.count('|') >= 3 and 'Member' not in l and '---' not in l]
+            insert_idx = None
+            for row_i, (line_i, row) in enumerate(table_rows):
+                # Extract member name from row
+                row_name = row.split('|')[1].strip()
+                if name.lower() < row_name.lower():
+                    insert_idx = line_i
+                    break
+            if insert_idx is not None:
+                lines.insert(insert_idx, link_entry)
+            else:
+                # Append before the last table row's trailing content
+                last_row_i = table_rows[-1][0] if table_rows else len(lines)
+                lines.insert(last_row_i + 1, link_entry)
+            new_content = '\n'.join(lines)
+            # Escape for GraphQL
+            new_content_escaped = new_content.replace('\\', '\\\\').replace('"', '\\"')
+            update_index_query = (
+                f'mutation {{ pages {{ update(id: {index_id}, content: "{new_content_escaped}") '
+                f'{{ responseResult {{ succeeded message }} }} }} }}'
+            )
+            update_result = gql(update_index_query)
+            if 'data' not in update_result or not update_result['data']:
+                print(f"    WARNING: Could not update index (API error): {update_result}")
+            elif update_result['data']['pages']['update']['responseResult']['succeeded']:
+                print(f"    Added {name} to PersonalLockers index")
+            else:
+                print(f"    WARNING: Could not update index: {update_result['data']['pages']['update']['responseResult']['message']}")
+    else:
+        print(f"    WARNING: PersonalLockers index page not found at path '{LOCKERS_INDEX_PATH}'")
 
     # Save to output
     output[email] = {
