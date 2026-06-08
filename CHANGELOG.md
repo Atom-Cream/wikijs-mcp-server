@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Partial-edit tools** — edit a page without re-sending its whole content (only the diff crosses the client↔MCP boundary; the full page travels only MCP↔Wiki.js, off the model's context). Each does fetch → modify → full update internally:
+  - **`patch_page`**: content-anchored find/replace (Edit-tool semantics). `old_string` is matched by exact content (never line number), may be multi-line, and must be unique unless `replace_all: true`. Clear errors on not-found / non-unique.
+  - **`replace_section`**: replace everything under a Markdown heading, up to the next heading of the same or higher level.
+  - **`append_to_page`**: append a markdown block to the end of a page.
+  - **`insert_after_heading`**: insert a markdown block right after a heading.
+  - `replace_section` and `insert_after_heading` normalize blank-line spacing around the spliced block: any number of leading/trailing blank lines in the caller's input (0, 1, or many) is re-framed to exactly one blank line against the surrounding headings/body, with no dangling blank line at end-of-document.
+
+### Fixed
+- **Silent description drop**: `create_page` / `update_page` now reject a `description` longer than Wiki.js's `varchar(255)` limit with an explicit error (`description exceeds Wiki.js 255-char limit: <len>`) *before* calling Wiki.js, instead of letting the DB silently drop it while reporting success.
+
+---
+
 ## [2.0.0] - 2026-03-19
 
 ### Added
