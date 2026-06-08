@@ -1,3 +1,5 @@
+// Initialize Sentry before anything else (no-op if SENTRY_DSN is unset).
+import { Sentry } from "./instrument.js";
 import fastify, { FastifyRequest } from "fastify";
 import { appendFileSync, mkdirSync } from "fs";
 import { WikiJsApi } from "./api.js";
@@ -32,6 +34,12 @@ console.log(`WIKIJS_TOKEN: ${config.wikijs.token.substring(0, 10)}...`);
 
 // Create Fastify instance
 const server = fastify({ logger: true });
+
+// Report uncaught route errors to Sentry (no-op if Sentry is disabled).
+// Note: most route handlers below catch their own errors and return an
+// { error } body, so they bypass this handler — the high-value capture point
+// is the MCP tool-call path in src/mcp/handlers.ts.
+Sentry.setupFastifyErrorHandler(server);
 
 // Register OAuth 2.1 routes (well-known metadata + authorization + token endpoints)
 await server.register(oauthPlugin);
@@ -600,7 +608,10 @@ const start = async () => {
     console.log(`MCP JSON-RPC endpoint: http://localhost:${config.port}/mcp`);
     console.log(`MCP SSE endpoint: http://localhost:${config.port}/mcp/events`);
   } catch (err) {
+    Sentry.captureException(err);
     server.log.error(err);
+    // Give Sentry a moment to flush the startup error before exiting.
+    await Sentry.flush(2000).catch(() => {});
     process.exit(1);
   }
 };
