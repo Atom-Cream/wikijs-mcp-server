@@ -727,6 +727,21 @@ function normalizeHeadingArg(heading: string): { level?: number; text: string } 
   return { text: heading.trim().replace(/^#+[ \t]*/, "").trim() };
 }
 
+// Strip blank (whitespace-only) lines from both ends of a markdown block,
+// returning its inner lines. Internal blank lines are preserved. An empty or
+// all-blank block yields []. Used to give the partial-edit tools a single
+// spacing rule: callers may pass a block with any number of surrounding blank
+// lines (0, 1, or many) and the tool re-frames it with exactly one blank line
+// against the surrounding headings.
+function trimBlankEdges(block: string): string[] {
+  const lines = block.split(/\r?\n/);
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start].trim() === "") start++;
+  while (end > start && lines[end - 1].trim() === "") end--;
+  return lines.slice(start, end);
+}
+
 // Locate the first heading line matching the requested heading; -1 if absent.
 function findHeadingIndex(lines: string[], heading: string): number {
   const target = normalizeHeadingArg(heading);
@@ -1470,11 +1485,19 @@ class WikiJsAPI {
       }
     }
 
-    const newLines = [
-      ...lines.slice(0, headingIdx + 1),
-      ...newMarkdown.split(/\r?\n/),
-      ...lines.slice(endIdx),
-    ];
+    // Re-frame the replacement body with exactly one blank line on each side:
+    // strip any blank lines the caller left on the edges, then add a single
+    // blank line between the heading above and the body, and another between the
+    // body and the next heading below. The next-heading blank is omitted when
+    // this section runs to end-of-document (endIdx === lines.length), so we don't
+    // leave a dangling blank line at EOF.
+    const body = trimBlankEdges(newMarkdown);
+    const after = lines.slice(endIdx);
+    const middle: string[] = [];
+    if (body.length > 0) middle.push("", ...body);
+    if (after.length > 0) middle.push("");
+
+    const newLines = [...lines.slice(0, headingIdx + 1), ...middle, ...after];
 
     return await this.updatePage(id, newLines.join("\n"));
   }
@@ -1509,11 +1532,21 @@ class WikiJsAPI {
       );
     }
 
-    const newLines = [
-      ...lines.slice(0, headingIdx + 1),
-      ...markdown.split(/\r?\n/),
-      ...lines.slice(headingIdx + 1),
-    ];
+    // Frame the inserted block with exactly one blank line above (against the
+    // heading) and one below (against the section's existing body). Strip blank
+    // lines the caller left on the block's edges, and drop any leading blank
+    // lines the existing body already had so our single separator isn't doubled.
+    const block = trimBlankEdges(markdown);
+    const rest = lines.slice(headingIdx + 1);
+    let r = 0;
+    while (r < rest.length && rest[r].trim() === "") r++;
+    const restBody = rest.slice(r);
+
+    const middle: string[] = [];
+    if (block.length > 0) middle.push("", ...block);
+    if (restBody.length > 0) middle.push("", ...restBody);
+
+    const newLines = [...lines.slice(0, headingIdx + 1), ...middle];
 
     return await this.updatePage(id, newLines.join("\n"));
   }
