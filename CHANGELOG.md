@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Sentry error monitoring** (opt-in): when `SENTRY_DSN` is set, server and tool errors are reported to Sentry, tagged with the release (`wikijs-mcp@<version>`) and environment. Captures startup failures, uncaught Fastify route errors, and — crucially — the MCP tool-call errors that are otherwise swallowed into an `isError` response (tagged by `tool` name). Scope is **errors only** (no performance tracing); PII (user emails, IPs, request bodies) is not sent. Disabled entirely when `SENTRY_DSN` is unset, so behavior is unchanged by default. New env vars: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`.
+- **Sentry error monitoring** (opt-in): when `SENTRY_DSN` is set, server and tool errors are reported to Sentry, tagged with the release (`wikijs-mcp@<version>`) and environment. Captures startup failures, uncaught Fastify route errors, and — crucially — the MCP tool-call errors that are otherwise swallowed into an `isError` response (tagged by `tool` name). Expected validation failures (description > 255, `patch_page` not-found / non-unique, heading not-found) are raised as `ExpectedToolError` and **not** reported to Sentry, keeping monitoring focused on real defects. Scope is **errors only** (no performance tracing); PII (user emails, IPs, request bodies) is not sent. Disabled entirely when `SENTRY_DSN` is unset, so behavior is unchanged by default. New env vars: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`.
 
 ## [2.1.0] - 2026-06-08
 
