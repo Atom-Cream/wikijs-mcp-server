@@ -272,6 +272,123 @@ export const wikiJsTools: WikiJsToolDefinition[] = [
     },
   },
 
+  // Patch page (content-anchored find/replace)
+  {
+    type: "function",
+    function: {
+      name: "patch_page",
+      description:
+        "Edit part of a page without re-sending the whole page. Fetches the current content server-side, replaces old_string with new_string, and saves the merged result. old_string is matched by EXACT content (never by line number) and may span multiple lines. Like the Edit tool: old_string must be unique unless replace_all is true, and an exact substring of the current content (whitespace and line breaks included). Use this instead of update_page for small edits.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to edit",
+          },
+          old_string: {
+            type: "string",
+            description:
+              "Exact text to find in the current page content (may be multi-line). Must match byte-for-byte and be unique unless replace_all is set.",
+          },
+          new_string: {
+            type: "string",
+            description: "Text to replace old_string with.",
+          },
+          replace_all: {
+            type: "boolean",
+            description:
+              "Replace every occurrence of old_string instead of requiring it to be unique (default false).",
+          },
+        },
+        required: ["id", "old_string", "new_string"],
+      },
+    },
+  },
+
+  // Replace section (by Markdown heading)
+  {
+    type: "function",
+    function: {
+      name: "replace_section",
+      description:
+        "Replace everything under a Markdown heading, up to the next heading of the same or higher level. The heading line itself is kept; only its body is replaced. Useful for larger structural rewrites without re-sending the whole page.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to edit",
+          },
+          heading: {
+            type: "string",
+            description:
+              "The heading whose section to replace, with or without leading '#'s (e.g. '## Session model' or 'Session model').",
+          },
+          new_markdown: {
+            type: "string",
+            description:
+              "New markdown body to place under the heading (replaces the existing section body).",
+          },
+        },
+        required: ["id", "heading", "new_markdown"],
+      },
+    },
+  },
+
+  // Append markdown to the end of a page
+  {
+    type: "function",
+    function: {
+      name: "append_to_page",
+      description:
+        "Append a block of markdown to the end of a page, separated from existing content by a blank line. Does not re-send the whole page.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to edit",
+          },
+          markdown: {
+            type: "string",
+            description: "Markdown to append to the end of the page.",
+          },
+        },
+        required: ["id", "markdown"],
+      },
+    },
+  },
+
+  // Insert markdown immediately after a heading
+  {
+    type: "function",
+    function: {
+      name: "insert_after_heading",
+      description:
+        "Insert a block of markdown immediately after a given heading line, before that section's existing body. Does not re-send the whole page.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to edit",
+          },
+          heading: {
+            type: "string",
+            description:
+              "The heading to insert after, with or without leading '#'s (e.g. '## Session model' or 'Session model').",
+          },
+          markdown: {
+            type: "string",
+            description: "Markdown to insert after the heading.",
+          },
+        },
+        required: ["id", "heading", "markdown"],
+      },
+    },
+  },
+
   // Delete page
   {
     type: "function",
@@ -553,6 +670,79 @@ export const wikiJsTools: WikiJsToolDefinition[] = [
     },
   },
 ];
+
+// Wiki.js stores page.description in a varchar(255) column. Longer values are
+// silently dropped by the DB (the body still saves, the description does not),
+// so we reject them up front with an actionable error instead of reporting a
+// false success.
+const MAX_DESCRIPTION_LENGTH = 255;
+
+function assertDescriptionWithinLimit(description?: string): void {
+  if (description != null && description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new Error(
+      `description exceeds Wiki.js ${MAX_DESCRIPTION_LENGTH}-char limit: ${description.length}`
+    );
+  }
+}
+
+// --- Markdown helpers for the partial-edit tools ---------------------------
+
+// Detect the dominant line ending so rebuilt content stays byte-compatible
+// with what Wiki.js stored.
+function detectNewline(text: string): string {
+  return text.includes("\r\n") ? "\r\n" : "\n";
+}
+
+// Count non-overlapping occurrences of needle in haystack.
+function countOccurrences(haystack: string, needle: string): number {
+  if (needle === "") return 0;
+  let count = 0;
+  let idx = haystack.indexOf(needle);
+  while (idx !== -1) {
+    count++;
+    idx = haystack.indexOf(needle, idx + needle.length);
+  }
+  return count;
+}
+
+const HEADING_RE = /^(#{1,6})[ \t]+(.*?)[ \t]*#*[ \t]*$/;
+
+interface ParsedHeading {
+  level: number;
+  text: string;
+}
+
+// Parse an ATX markdown heading line ("## Title"); null if the line is not one.
+function parseHeading(line: string): ParsedHeading | null {
+  const m = HEADING_RE.exec(line);
+  if (!m) return null;
+  return { level: m[1].length, text: m[2].trim() };
+}
+
+// Normalize a heading argument that may be given with or without leading '#'s
+// (e.g. "## Session model" or "Session model"). When '#'s are present the level
+// is captured and used to disambiguate; otherwise any matching heading text wins.
+function normalizeHeadingArg(heading: string): { level?: number; text: string } {
+  const parsed = parseHeading(heading.trim());
+  if (parsed) return { level: parsed.level, text: parsed.text };
+  return { text: heading.trim().replace(/^#+[ \t]*/, "").trim() };
+}
+
+// Locate the first heading line matching the requested heading; -1 if absent.
+function findHeadingIndex(lines: string[], heading: string): number {
+  const target = normalizeHeadingArg(heading);
+  for (let i = 0; i < lines.length; i++) {
+    const parsed = parseHeading(lines[i]);
+    if (!parsed) continue;
+    if (
+      parsed.text === target.text &&
+      (target.level === undefined || parsed.level === target.level)
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
 
 // Wiki.js API base class
 class WikiJsAPI {
@@ -966,6 +1156,7 @@ class WikiJsAPI {
         ", "
       )}, isPublished: ${isPublished}`
     );
+    assertDescriptionWithinLimit(description);
     const mutation = gql`
       mutation CreatePage(
         $content: String!
@@ -1076,6 +1267,10 @@ class WikiJsAPI {
       }`
     );
 
+    // Validate before any network round-trip so an over-long description fails
+    // loudly instead of being silently truncated/dropped by the DB.
+    assertDescriptionWithinLimit(description);
+
     // Fetch current page metadata first — the Wiki.js update mutation requires
     // all fields to be present, otherwise it saves content silently without
     // creating a history entry or updating "last edited by".
@@ -1183,6 +1378,151 @@ class WikiJsAPI {
       );
       throw error;
     }
+  }
+
+  // Content-anchored find/replace, mirroring the Claude Code Edit tool.
+  //
+  // Fetches the page's current stored content (the same bytes get_page_content
+  // returns), replaces old_string with new_string, and writes the full merged
+  // content back via the normal update path. Only the small diff crosses the
+  // client↔MCP boundary; the full page travels solely MCP↔Wiki.js, keeping it
+  // out of the model's context.
+  //
+  // old_string is matched by exact content (NOT by line number) and may be
+  // multi-line. If it occurs more than once the call errors unless replaceAll
+  // is set; if it is absent the call errors. Everything else is preserved
+  // byte-for-byte.
+  //
+  // NOTE: Wiki.js has no partial-update API, so this is a fetch→modify→full-PUT
+  // and carries a small TOCTOU window if another writer edits the page between
+  // the read and the write. Low risk for our usage; the underlying update
+  // mutation offers no version/checksum guard to close it.
+  async patchPage(
+    id: number,
+    oldString: string,
+    newString: string,
+    replaceAll: boolean = false
+  ): Promise<WikiJsPage> {
+    console.log(
+      `[WikiJsAPI] patchPage called with id: ${id}, replaceAll: ${replaceAll}`
+    );
+    if (oldString === "") {
+      throw new Error("patch_page: old_string must not be empty");
+    }
+    if (oldString === newString) {
+      throw new Error(
+        "patch_page: old_string and new_string are identical; nothing to change"
+      );
+    }
+
+    const content = await this.getPageContent(id);
+    const count = countOccurrences(content, oldString);
+
+    if (count === 0) {
+      throw new Error(
+        `patch_page: old_string not found in page ${id}. It must match the stored content exactly, including whitespace and line breaks.`
+      );
+    }
+    if (count > 1 && !replaceAll) {
+      throw new Error(
+        `patch_page: old_string is not unique in page ${id} (found ${count} occurrences). Add more surrounding context to make it unique, or pass replace_all: true.`
+      );
+    }
+
+    // split/join replaces every occurrence and — unlike String.prototype.replace
+    // — never interprets '$' sequences in new_string. For the unique case
+    // (count === 1) this performs exactly one replacement.
+    const newContent = content.split(oldString).join(newString);
+
+    return await this.updatePage(id, newContent);
+  }
+
+  // Replace everything under a given Markdown heading, up to the next heading of
+  // the same or higher level. The heading line itself is preserved; only its
+  // body is swapped for newMarkdown. heading may be passed with or without its
+  // leading '#'s (e.g. "## Session model" or "Session model").
+  async replaceSection(
+    id: number,
+    heading: string,
+    newMarkdown: string
+  ): Promise<WikiJsPage> {
+    console.log(
+      `[WikiJsAPI] replaceSection called with id: ${id}, heading: ${heading}`
+    );
+    const content = await this.getPageContent(id);
+    const newline = detectNewline(content);
+    const lines = content.split(/\r?\n/);
+
+    const headingIdx = findHeadingIndex(lines, heading);
+    if (headingIdx === -1) {
+      throw new Error(
+        `replace_section: heading "${heading}" not found in page ${id}.`
+      );
+    }
+    const headingLevel = parseHeading(lines[headingIdx])!.level;
+
+    // The section ends at the next heading of the same or higher level (smaller
+    // or equal '#' count), or at end-of-document.
+    let endIdx = lines.length;
+    for (let i = headingIdx + 1; i < lines.length; i++) {
+      const parsed = parseHeading(lines[i]);
+      if (parsed && parsed.level <= headingLevel) {
+        endIdx = i;
+        break;
+      }
+    }
+
+    const newLines = [
+      ...lines.slice(0, headingIdx + 1),
+      ...newMarkdown.split(/\r?\n/),
+      ...lines.slice(endIdx),
+    ];
+
+    return await this.updatePage(id, newLines.join(newline));
+  }
+
+  // Append a block of markdown to the end of the page, separated from existing
+  // content by a blank line.
+  async appendToPage(id: number, markdown: string): Promise<WikiJsPage> {
+    console.log(`[WikiJsAPI] appendToPage called with id: ${id}`);
+    const content = await this.getPageContent(id);
+    const newline = detectNewline(content);
+    const trimmed = content.replace(/[\r\n]+$/, "");
+    const newContent =
+      trimmed.length > 0
+        ? `${trimmed}${newline}${newline}${markdown}`
+        : markdown;
+    return await this.updatePage(id, newContent);
+  }
+
+  // Insert a block of markdown immediately after a given heading line, before
+  // that section's existing body.
+  async insertAfterHeading(
+    id: number,
+    heading: string,
+    markdown: string
+  ): Promise<WikiJsPage> {
+    console.log(
+      `[WikiJsAPI] insertAfterHeading called with id: ${id}, heading: ${heading}`
+    );
+    const content = await this.getPageContent(id);
+    const newline = detectNewline(content);
+    const lines = content.split(/\r?\n/);
+
+    const headingIdx = findHeadingIndex(lines, heading);
+    if (headingIdx === -1) {
+      throw new Error(
+        `insert_after_heading: heading "${heading}" not found in page ${id}.`
+      );
+    }
+
+    const newLines = [
+      ...lines.slice(0, headingIdx + 1),
+      ...markdown.split(/\r?\n/),
+      ...lines.slice(headingIdx + 1),
+    ];
+
+    return await this.updatePage(id, newLines.join(newline));
   }
 
   // Delete page
@@ -1901,6 +2241,27 @@ export function createToolImplementations(api: WikiJsAPI): Record<string, (param
         params.description
       );
     },
+    patch_page: async (params: any) => {
+      console.log(`[Implementations] patch_page called with params: ${JSON.stringify({ ...params, old_string: "[omitted]", new_string: "[omitted]" })}`);
+      return await api.patchPage(
+        params.id,
+        params.old_string,
+        params.new_string,
+        params.replace_all === true
+      );
+    },
+    replace_section: async (params: any) => {
+      console.log(`[Implementations] replace_section called with params: ${JSON.stringify({ ...params, new_markdown: "[omitted]" })}`);
+      return await api.replaceSection(params.id, params.heading, params.new_markdown);
+    },
+    append_to_page: async (params: any) => {
+      console.log(`[Implementations] append_to_page called with params: ${JSON.stringify({ ...params, markdown: "[omitted]" })}`);
+      return await api.appendToPage(params.id, params.markdown);
+    },
+    insert_after_heading: async (params: any) => {
+      console.log(`[Implementations] insert_after_heading called with params: ${JSON.stringify({ ...params, markdown: "[omitted]" })}`);
+      return await api.insertAfterHeading(params.id, params.heading, params.markdown);
+    },
     delete_page: async (params: any) => {
       console.log(`[Implementations] delete_page called with params: ${JSON.stringify(params)}`);
       return await api.deletePage(params.id);
@@ -2121,6 +2482,123 @@ export const wikiJsToolsWithImpl = [
       },
     },
     implementation: implementations.update_page,
+  },
+  // Patch page (content-anchored find/replace)
+  {
+    type: "function",
+    function: {
+      name: "patch_page",
+      description:
+        "Edit part of a page without re-sending the whole page. Fetches the current content server-side, replaces old_string with new_string, and saves the merged result. old_string is matched by EXACT content (never by line number) and may span multiple lines. Like the Edit tool: old_string must be unique unless replace_all is true, and an exact substring of the current content (whitespace and line breaks included). Use this instead of update_page for small edits.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to edit",
+          },
+          old_string: {
+            type: "string",
+            description:
+              "Exact text to find in the current page content (may be multi-line). Must match byte-for-byte and be unique unless replace_all is set.",
+          },
+          new_string: {
+            type: "string",
+            description: "Text to replace old_string with.",
+          },
+          replace_all: {
+            type: "boolean",
+            description:
+              "Replace every occurrence of old_string instead of requiring it to be unique (default false).",
+          },
+        },
+        required: ["id", "old_string", "new_string"],
+      },
+    },
+    implementation: implementations.patch_page,
+  },
+  // Replace section (by Markdown heading)
+  {
+    type: "function",
+    function: {
+      name: "replace_section",
+      description:
+        "Replace everything under a Markdown heading, up to the next heading of the same or higher level. The heading line itself is kept; only its body is replaced. Useful for larger structural rewrites without re-sending the whole page.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to edit",
+          },
+          heading: {
+            type: "string",
+            description:
+              "The heading whose section to replace, with or without leading '#'s (e.g. '## Session model' or 'Session model').",
+          },
+          new_markdown: {
+            type: "string",
+            description:
+              "New markdown body to place under the heading (replaces the existing section body).",
+          },
+        },
+        required: ["id", "heading", "new_markdown"],
+      },
+    },
+    implementation: implementations.replace_section,
+  },
+  // Append markdown to the end of a page
+  {
+    type: "function",
+    function: {
+      name: "append_to_page",
+      description:
+        "Append a block of markdown to the end of a page, separated from existing content by a blank line. Does not re-send the whole page.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to edit",
+          },
+          markdown: {
+            type: "string",
+            description: "Markdown to append to the end of the page.",
+          },
+        },
+        required: ["id", "markdown"],
+      },
+    },
+    implementation: implementations.append_to_page,
+  },
+  // Insert markdown immediately after a heading
+  {
+    type: "function",
+    function: {
+      name: "insert_after_heading",
+      description:
+        "Insert a block of markdown immediately after a given heading line, before that section's existing body. Does not re-send the whole page.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "number",
+            description: "Page ID to edit",
+          },
+          heading: {
+            type: "string",
+            description:
+              "The heading to insert after, with or without leading '#'s (e.g. '## Session model' or 'Session model').",
+          },
+          markdown: {
+            type: "string",
+            description: "Markdown to insert after the heading.",
+          },
+        },
+        required: ["id", "heading", "markdown"],
+      },
+    },
+    implementation: implementations.insert_after_heading,
   },
   // Delete page
   {

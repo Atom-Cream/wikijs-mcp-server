@@ -137,6 +137,54 @@ export const UpdatePageParamsSchema = z.object({
 });
 
 /**
+ * Схема параметров для частичного редактирования (content-anchored find/replace)
+ */
+export const PatchPageParamsSchema = z.object({
+  id: z.number().int().positive().describe("ID страницы"),
+  old_string: z
+    .string()
+    .min(1)
+    .describe("Точный фрагмент текущего содержимого для замены (может быть многострочным)"),
+  new_string: z.string().describe("Текст, на который заменяется old_string"),
+  replace_all: z
+    .boolean()
+    .optional()
+    .describe("Заменить все вхождения, а не только уникальное (по умолчанию false)"),
+});
+
+/**
+ * Схема параметров для замены секции по заголовку
+ */
+export const ReplaceSectionParamsSchema = z.object({
+  id: z.number().int().positive().describe("ID страницы"),
+  heading: z
+    .string()
+    .min(1)
+    .describe("Заголовок секции (с '#' или без, например '## Session model')"),
+  new_markdown: z.string().describe("Новое содержимое секции в формате Markdown"),
+});
+
+/**
+ * Схема параметров для добавления markdown в конец страницы
+ */
+export const AppendToPageParamsSchema = z.object({
+  id: z.number().int().positive().describe("ID страницы"),
+  markdown: z.string().min(1).describe("Markdown для добавления в конец страницы"),
+});
+
+/**
+ * Схема параметров для вставки markdown после заголовка
+ */
+export const InsertAfterHeadingParamsSchema = z.object({
+  id: z.number().int().positive().describe("ID страницы"),
+  heading: z
+    .string()
+    .min(1)
+    .describe("Заголовок, после которого вставляется markdown (с '#' или без)"),
+  markdown: z.string().min(1).describe("Markdown для вставки после заголовка"),
+});
+
+/**
  * Схема параметров для удаления страницы
  */
 export const DeletePageParamsSchema = z.object({
@@ -260,6 +308,10 @@ export const ToolParamsSchemas = {
   search_pages: SearchPagesParamsSchema,
   create_page: CreatePageParamsSchema,
   update_page: UpdatePageParamsSchema,
+  patch_page: PatchPageParamsSchema,
+  replace_section: ReplaceSectionParamsSchema,
+  append_to_page: AppendToPageParamsSchema,
+  insert_after_heading: InsertAfterHeadingParamsSchema,
   delete_page: DeletePageParamsSchema,
   move_page: MovePageParamsSchema,
   search_users: SearchUsersParamsSchema,
@@ -275,6 +327,10 @@ export const ToolResultSchemas = {
   search_pages: SearchPagesResultSchema,
   create_page: CreatePageResultSchema,
   update_page: UpdatePageResultSchema,
+  patch_page: UpdatePageResultSchema,
+  replace_section: UpdatePageResultSchema,
+  append_to_page: UpdatePageResultSchema,
+  insert_after_heading: UpdatePageResultSchema,
   delete_page: DeletePageResultSchema,
   list_users: ListUsersResultSchema,
   search_users: SearchUsersResultSchema,
