@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [2.1.0] - 2026-06-08
 
 ### Added
 - **Partial-edit tools** — edit a page without re-sending its whole content (only the diff crosses the client↔MCP boundary; the full page travels only MCP↔Wiki.js, off the model's context). Each does fetch → modify → full update internally:
