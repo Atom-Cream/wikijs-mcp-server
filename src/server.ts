@@ -310,7 +310,7 @@ server.get("/", async () => {
   return {
     status: "ok",
     message: "Wiki.js MCP Server is running",
-    version: "1.3.0",
+    version: "2.1.0",
     endpoints: {
       "/health": "Server health check",
       "/tools": "List available tools (legacy format)",

@@ -55,7 +55,7 @@ export class McpHandlers {
       },
       serverInfo: {
         name: "wikijs-mcp",
-        version: "1.3.0",
+        version: "2.1.0",
       },
     };
   }
