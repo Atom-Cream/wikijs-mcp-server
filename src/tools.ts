@@ -686,12 +686,11 @@ function assertDescriptionWithinLimit(description?: string): void {
 }
 
 // --- Markdown helpers for the partial-edit tools ---------------------------
-
-// Detect the dominant line ending so rebuilt content stays byte-compatible
-// with what Wiki.js stored.
-function detectNewline(text: string): string {
-  return text.includes("\r\n") ? "\r\n" : "\n";
-}
+//
+// The line-based tools below split content into lines and rejoin with "\n".
+// Wiki.js stores page content with LF endings, so this is a no-op for normal
+// pages and harmlessly normalizes the rare mixed-ending page to LF.
+// (patch_page does a pure substring replace and never touches line endings.)
 
 // Count non-overlapping occurrences of needle in haystack.
 function countOccurrences(haystack: string, needle: string): number {
@@ -1450,7 +1449,6 @@ class WikiJsAPI {
       `[WikiJsAPI] replaceSection called with id: ${id}, heading: ${heading}`
     );
     const content = await this.getPageContent(id);
-    const newline = detectNewline(content);
     const lines = content.split(/\r?\n/);
 
     const headingIdx = findHeadingIndex(lines, heading);
@@ -1478,7 +1476,7 @@ class WikiJsAPI {
       ...lines.slice(endIdx),
     ];
 
-    return await this.updatePage(id, newLines.join(newline));
+    return await this.updatePage(id, newLines.join("\n"));
   }
 
   // Append a block of markdown to the end of the page, separated from existing
@@ -1486,12 +1484,8 @@ class WikiJsAPI {
   async appendToPage(id: number, markdown: string): Promise<WikiJsPage> {
     console.log(`[WikiJsAPI] appendToPage called with id: ${id}`);
     const content = await this.getPageContent(id);
-    const newline = detectNewline(content);
     const trimmed = content.replace(/[\r\n]+$/, "");
-    const newContent =
-      trimmed.length > 0
-        ? `${trimmed}${newline}${newline}${markdown}`
-        : markdown;
+    const newContent = trimmed.length > 0 ? `${trimmed}\n\n${markdown}` : markdown;
     return await this.updatePage(id, newContent);
   }
 
@@ -1506,7 +1500,6 @@ class WikiJsAPI {
       `[WikiJsAPI] insertAfterHeading called with id: ${id}, heading: ${heading}`
     );
     const content = await this.getPageContent(id);
-    const newline = detectNewline(content);
     const lines = content.split(/\r?\n/);
 
     const headingIdx = findHeadingIndex(lines, heading);
@@ -1522,7 +1515,7 @@ class WikiJsAPI {
       ...lines.slice(headingIdx + 1),
     ];
 
-    return await this.updatePage(id, newLines.join(newline));
+    return await this.updatePage(id, newLines.join("\n"));
   }
 
   // Delete page
