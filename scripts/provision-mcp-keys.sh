@@ -348,7 +348,7 @@ for user in users:
                 lines.insert(last_row_i + 1, link_entry)
             new_content = '\n'.join(lines)
             # Escape for GraphQL
-            new_content_escaped = new_content.replace('\\', '\\\\').replace('"', '\\"')
+            new_content_escaped = new_content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
             update_index_query = (
                 f'mutation {{ pages {{ update(id: {index_id}, content: "{new_content_escaped}") '
                 f'{{ responseResult {{ succeeded message }} }} }} }}'
