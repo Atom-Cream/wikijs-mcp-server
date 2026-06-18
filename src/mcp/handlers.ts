@@ -4,7 +4,8 @@
  * Ported from lib/fixed_mcp_http_server.js
  */
 
-import { wikiJsTools, wikiJsToolsWithImpl, WikiJsAPI, createToolImplementations } from "../tools.js";
+import * as Sentry from "@sentry/node";
+import { wikiJsTools, wikiJsToolsWithImpl, WikiJsAPI, createToolImplementations, ExpectedToolError } from "../tools.js";
 import {
   safeValidateToolParams,
   safeValidateToolResult,
@@ -139,6 +140,16 @@ export class McpHandlers {
     } catch (toolErr: any) {
       const errMsg = toolErr?.message || String(toolErr);
       console.error(`[MCP] Tool ${toolName} threw: ${errMsg}`);
+      // These errors are returned to the client as isError (not re-thrown), so
+      // they never reach Fastify's error handler — capture them explicitly.
+      // Skip ExpectedToolError (validation / not-found / non-unique): those are
+      // routine user/model-facing failures, not defects, so they'd just be noise
+      // in Sentry. Real errors are tagged by tool name so issues group per tool.
+      if (!(toolErr instanceof ExpectedToolError)) {
+        Sentry.captureException(toolErr, {
+          tags: { tool: toolName, layer: "mcp_tool_call" },
+        });
+      }
       return {
         content: [{ type: "text", text: `Error: ${errMsg}` }],
         isError: true,

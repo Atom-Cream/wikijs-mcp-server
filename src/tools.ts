@@ -671,6 +671,17 @@ export const wikiJsTools: WikiJsToolDefinition[] = [
   },
 ];
 
+// Errors that represent expected, user/model-facing validation failures
+// (bad input, not-found, non-unique match) rather than server/infra bugs.
+// The MCP layer returns these to the client as a normal tool error but does
+// NOT report them to Sentry, keeping error monitoring focused on real defects.
+export class ExpectedToolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExpectedToolError";
+  }
+}
+
 // Wiki.js stores page.description in a varchar(255) column. Longer values are
 // silently dropped by the DB (the body still saves, the description does not),
 // so we reject them up front with an actionable error instead of reporting a
@@ -679,7 +690,7 @@ const MAX_DESCRIPTION_LENGTH = 255;
 
 function assertDescriptionWithinLimit(description?: string): void {
   if (description != null && description.length > MAX_DESCRIPTION_LENGTH) {
-    throw new Error(
+    throw new ExpectedToolError(
       `description exceeds Wiki.js ${MAX_DESCRIPTION_LENGTH}-char limit: ${description.length}`
     );
   }
@@ -1421,10 +1432,10 @@ class WikiJsAPI {
       `[WikiJsAPI] patchPage called with id: ${id}, replaceAll: ${replaceAll}`
     );
     if (oldString === "") {
-      throw new Error("patch_page: old_string must not be empty");
+      throw new ExpectedToolError("patch_page: old_string must not be empty");
     }
     if (oldString === newString) {
-      throw new Error(
+      throw new ExpectedToolError(
         "patch_page: old_string and new_string are identical; nothing to change"
       );
     }
@@ -1433,12 +1444,12 @@ class WikiJsAPI {
     const count = countOccurrences(content, oldString);
 
     if (count === 0) {
-      throw new Error(
+      throw new ExpectedToolError(
         `patch_page: old_string not found in page ${id}. It must match the stored content exactly, including whitespace and line breaks.`
       );
     }
     if (count > 1 && !replaceAll) {
-      throw new Error(
+      throw new ExpectedToolError(
         `patch_page: old_string is not unique in page ${id} (found ${count} occurrences). Add more surrounding context to make it unique, or pass replace_all: true.`
       );
     }
@@ -1468,7 +1479,7 @@ class WikiJsAPI {
 
     const headingIdx = findHeadingIndex(lines, heading);
     if (headingIdx === -1) {
-      throw new Error(
+      throw new ExpectedToolError(
         `replace_section: heading "${heading}" not found in page ${id}.`
       );
     }
@@ -1527,7 +1538,7 @@ class WikiJsAPI {
 
     const headingIdx = findHeadingIndex(lines, heading);
     if (headingIdx === -1) {
-      throw new Error(
+      throw new ExpectedToolError(
         `insert_after_heading: heading "${heading}" not found in page ${id}.`
       );
     }
